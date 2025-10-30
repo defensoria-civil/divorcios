@@ -1,0 +1,54 @@
+version: "3.9"
+services:
+  api:
+    build: ./backend
+    env_file:
+      - .env
+    environment:
+      - PYTHONPATH=/app/backend/src
+    ports:
+      - "8000:8000"
+    depends_on:
+      - db
+      - redis
+    volumes:
+      - ./backend:/app/backend
+  worker:
+    build: ./backend
+    working_dir: /app/backend/src
+    command: sh -c "celery -A infrastructure.tasks.celery_app.app worker -l info"
+    env_file:
+      - .env
+    environment:
+      - PYTHONPATH=/app/backend/src
+    depends_on:
+      - redis
+      - db
+    volumes:
+      - ./backend:/app/backend
+  db:
+    image: ankane/pgvector:latest
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: def_civil
+    ports:
+      - "5432:5432"
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+  waha:
+    image: devlikeapro/whatsapp-http-api:latest
+    environment:
+      - API_KEY=${WAHA_API_KEY:-changeme}
+    ports:
+      - "3000:3000"
+  ollama:
+    image: ollama/ollama:latest
+    volumes:
+      - ollama:/root/.ollama
+    ports:
+      - "11434:11434"
+volumes:
+  ollama: {}
