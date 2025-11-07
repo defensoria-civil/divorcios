@@ -6,6 +6,8 @@ services:
       - .env
     environment:
       - PYTHONPATH=/app/backend/src
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "8000:8000"
     depends_on:
@@ -21,6 +23,8 @@ services:
       - .env
     environment:
       - PYTHONPATH=/app/backend/src
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       - redis
       - db
@@ -39,16 +43,29 @@ services:
     ports:
       - "6379:6379"
   waha:
-    image: devlikeapro/whatsapp-http-api:latest
+    image: devlikeapro/waha:latest
+    restart: unless-stopped
     environment:
-      - API_KEY=${WAHA_API_KEY:-changeme}
+      - WAHA_HTTP_HOST=0.0.0.0
+      - WAHA_HTTP_PORT=3000
+      - WAHA_WEBHOOK_URL=http://host.docker.internal:8000/webhook/whatsapp
+      - WAHA_WEBHOOK_EVENTS=message
+      - WAHA_WEBHOOK_EVENTS_ENABLED=true
+      - WAHA_SESSION_STORE=file
+      - WAHA_SESSION_STORE_PATH=/app/sessions
+      - WAHA_LOG_LEVEL=info
+      - WAHA_LOG_FORMAT=PRETTY
+      - WAHA_DASHBOARD_ENABLED=true
+      - WAHA_MEDIA_DOWNLOAD=true
+      - WAHA_MEDIA_DOWNLOAD_PATH=/app/media
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "3000:3000"
-  ollama:
-    image: ollama/ollama:latest
     volumes:
-      - ollama:/root/.ollama
-    ports:
-      - "11434:11434"
+      - waha_sessions:/app/sessions
+      - waha_media:/app/media
+
 volumes:
-  ollama: {}
+  waha_sessions:
+  waha_media:

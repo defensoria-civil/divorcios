@@ -8,7 +8,8 @@ ALLOWED_JURIS = [j.strip().lower() for j in os.getenv("ALLOWED_JURISDICTIONS", "
 
 class SimpleAddressValidationService(AddressValidationService):
     STREET_REGEX = re.compile(r"(?P<street>[A-Za-zÀ-ÿ'.\s]+)\s+(?P<number>\d+[A-Za-z0-9/-]*)", re.UNICODE)
-    CITY_PROV_REGEX = re.compile(r"(?P<city>[A-Za-zÀ-ÿ'.\s]+),\s*(?P<province>[A-Za-zÀ-ÿ'.\s]+)", re.UNICODE)
+    # Aceptar tanto "Ciudad, Provincia" como "Ciudad Provincia"
+    CITY_PROV_REGEX = re.compile(r"(?P<city>[A-Za-zÀ-ÿ'.\s]+)[,\s]+(?P<province>[A-Za-zÀ-ÿ'.\s]+)", re.UNICODE)
 
     def validate_address(self, address_text: str, is_marital_address: bool = False) -> AddressValidationResult:
         if not address_text or len(address_text.strip()) < 5:

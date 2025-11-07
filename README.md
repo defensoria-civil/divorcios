@@ -177,6 +177,35 @@ pytest backend/tests --cov=backend/src --cov-report=html
 open htmlcov/index.html
 ```
 
+### 🧹 Limpieza de Datos de Prueba
+
+Durante el desarrollo y testing del chatbot de WhatsApp, es necesario limpiar los datos frecuentemente para comenzar pruebas desde cero.
+
+**Opción 1: PowerShell (Windows - Recomendado)**
+```powershell
+.\clean.ps1
+# o directamente:
+.\scripts\clean_test_data.ps1
+```
+
+**Opción 2: Python (Cross-platform)**
+```bash
+python scripts/clean_test_data.py
+```
+
+**Opción 3: Bash (Linux/Mac)**
+```bash
+chmod +x scripts/clean_test_data.sh
+./scripts/clean_test_data.sh
+```
+
+⚠️ **Lo que hace el script:**
+- ✅ Preserva: usuarios y base de conocimiento legal
+- ❌ Elimina: casos, mensajes y memorias de conversaciones
+- 🔄 Resetea IDs de secuencias
+
+Ver más detalles en [`scripts/README.md`](./scripts/README.md)
+
 ## 🔧 Configuración
 
 ### Variables de Entorno Críticas

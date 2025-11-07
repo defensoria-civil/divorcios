@@ -1,0 +1,439 @@
+import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { useParams, useNavigate } from 'react-router-dom';
+import { format } from 'date-fns';
+import { es } from 'date-fns/locale';
+import toast from 'react-hot-toast';
+import { ArrowLeft, Download, User, Bot, Calendar, Phone, MapPin, Copy } from 'lucide-react';
+import { casesApi } from '../api/cases.api';
+import { Button } from '@/shared/components/ui/Button';
+import { Card } from '@/shared/components/ui/Card';
+import ShimmerButton from '@/shared/components/magicui/ShimmerButton';
+import BlurFade from '@/shared/components/magicui/BlurFade';
+import BorderBeam from '@/shared/components/magicui/BorderBeam';
+import { PdfGenerationModal } from './PdfGenerationModal';
+import { DocumentsViewer } from './DocumentsViewer';
+
+export function CaseDetail() {
+  const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
+  const caseId = parseInt(id || '0', 10);
+  const [showPdfModal, setShowPdfModal] = useState(false);
+
+  const { data: case_, isLoading, error } = useQuery({
+    queryKey: ['case', caseId],
+    queryFn: () => casesApi.getById(caseId),
+    enabled: !!caseId,
+  });
+
+  const handleDownloadPDF = () => {
+    setShowPdfModal(true);
+  };
+
+  const handleWhatsAppContact = () => {
+    if (!case_?.phone) {
+      toast.error('No hay número de teléfono disponible');
+      return;
+    }
+
+    // Extraer número del formato WhatsApp (ej: 261082623000696@lid -> 261082623000696)
+    let phoneNumber = case_.phone.split('@')[0];
+    
+    // Limpiar el número: eliminar espacios, guiones, paréntesis
+    phoneNumber = phoneNumber.replace(/[\s\-\(\)]/g, '');
+    
+    // Si el número no empieza con +, agregarlo
+    if (!phoneNumber.startsWith('+')) {
+      phoneNumber = '+' + phoneNumber;
+    }
+    
+    // Mensaje predeterminado
+    const message = encodeURIComponent(
+      `Hola ${case_.nombre || 'estimado/a'},\n\nSoy del equipo de la Defensoría Civil de San Rafael.\n\nMe comunico respecto a tu trámite de divorcio (Caso #${case_.id}).\n\n¿En qué puedo ayudarte?`
+    );
+
+    // Abrir WhatsApp
+    const whatsappUrl = `https://wa.me/${phoneNumber}?text=${message}`;
+    
+    console.log('Opening WhatsApp with:', whatsappUrl);
+    console.log('Phone number extracted:', phoneNumber);
+    console.log('Original phone field:', case_.phone);
+    
+    window.open(whatsappUrl, '_blank');
+    
+    toast.success('Abriendo WhatsApp...');
+  };
+
+  const handleCopyPhone = () => {
+    if (!case_?.phone) {
+      toast.error('No hay número disponible');
+      return;
+    }
+    
+    const phoneNumber = case_.phone.split('@')[0];
+    navigator.clipboard.writeText(phoneNumber);
+    toast.success('Número copiado al portapapeles');
+  };
+
+  // Función para formatear el teléfono para visualización
+  const formatPhoneDisplay = (phone: string) => {
+    // Extraer el número sin el sufijo @lid
+    const cleanPhone = phone.split('@')[0];
+    
+    // Si es muy largo (15 dígitos), probablemente sea: CódigoPaís + CódigoArea + Número
+    // Formato Argentina: +54 261 xxx-xxxx (54 = Argentina, 261 = Mendoza)
+    if (cleanPhone.length === 15 && cleanPhone.startsWith('54')) {
+      // Intentar formatear como número argentino
+      // 54 261 082 623 0006 96 -> probablemente duplicado o con prefijo extra
+      return `+${cleanPhone.slice(0, 2)} ${cleanPhone.slice(2, 5)} ${cleanPhone.slice(5)}`;
+    }
+    
+    // Si tiene 13-14 dígitos, formato internacional estándar
+    if (cleanPhone.length >= 11) {
+      return `+${cleanPhone.slice(0, 2)} ${cleanPhone.slice(2, 5)} ${cleanPhone.slice(5)}`;
+    }
+    
+    // Formato genérico
+    return cleanPhone;
+  };
+
+  if (isLoading) {
+    return (
+      <div className="p-6">
+        <div className="flex items-center justify-center h-64">
+          <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error || !case_) {
+    return (
+      <div className="p-6">
+        <Card className="p-6">
+          <p className="text-red-600 dark:text-red-400">Error cargando caso: {(error as Error)?.message}</p>
+          <Button onClick={() => navigate('/cases')} className="mt-4">
+            Volver a casos
+          </Button>
+        </Card>
+      </div>
+    );
+  }
+
+  const getStatusBadgeColor = (status: string) => {
+    switch (status) {
+      case 'new':
+        return 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200';
+      case 'datos_completos':
+        return 'bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-200';
+      case 'documentacion_completa':
+        return 'bg-green-100 text-green-800 dark:bg-green-900/50 dark:text-green-200';
+      default:
+        return 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200';
+    }
+  };
+
+  const getStatusLabel = (status: string) => {
+    const labels: Record<string, string> = {
+      'new': 'Nuevo',
+      'datos_completos': 'Datos Completos',
+      'documentacion_completa': 'Documentación Completa',
+    };
+    return labels[status] || status;
+  };
+
+  return (
+    <div className="p-6 space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <Button
+            variant="outline"
+            onClick={() => navigate('/cases')}
+          >
+            <ArrowLeft className="w-4 h-4 mr-2" />
+            Volver
+          </Button>
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100">Caso #{case_.id}</h1>
+            <p className="mt-1 text-gray-600 dark:text-gray-400">
+              Creado el {format(new Date(case_.created_at), "dd 'de' MMMM 'de' yyyy", { locale: es })}
+            </p>
+          </div>
+        </div>
+        <ShimmerButton 
+          onClick={handleDownloadPDF}
+          className="h-10 px-4"
+          background="linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)"
+          shimmerColor="#60a5fa"
+        >
+          <Download className="w-4 h-4 mr-2" />
+          Descargar PDF
+        </ShimmerButton>
+      </div>
+
+      {/* Case Info */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Main Info */}
+        <div className="lg:col-span-2 space-y-6">
+          {/* Personal Data */}
+          <BlurFade delay={0.1}>
+            <Card className="p-6">
+            <h2 className="text-xl font-semibold mb-4 text-gray-900 dark:text-gray-100">Información Personal</h2>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">
+                  Nombre Completo
+                </label>
+                <p className="text-gray-900 dark:text-gray-100">{case_.nombre || '-'}</p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">
+                  DNI
+                </label>
+                <p className="text-gray-900 dark:text-gray-100">{case_.dni || '-'}</p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">
+                  <Phone className="w-4 h-4 inline mr-1" />
+                  Teléfono / WhatsApp
+                </label>
+                <div className="flex items-center gap-2">
+                  <p className="text-gray-900 dark:text-gray-100 font-mono text-sm">
+                    {formatPhoneDisplay(case_.phone)}
+                  </p>
+                  <button
+                    onClick={handleCopyPhone}
+                    className="p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded transition-colors"
+                    title="Copiar número"
+                  >
+                    <Copy className="w-3 h-3 text-gray-500 dark:text-gray-400" />
+                  </button>
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">
+                  <Calendar className="w-4 h-4 inline mr-1" />
+                  Fecha de Nacimiento
+                </label>
+                <p className="text-gray-900 dark:text-gray-100">
+                  {case_.fecha_nacimiento 
+                    ? format(new Date(case_.fecha_nacimiento), "dd/MM/yyyy")
+                    : '-'
+                  }
+                </p>
+              </div>
+              <div className="col-span-2">
+                <label className="block text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">
+                  <MapPin className="w-4 h-4 inline mr-1" />
+                  Domicilio
+                </label>
+                <p className="text-gray-900 dark:text-gray-100">{case_.domicilio || '-'}</p>
+              </div>
+            </div>
+            </Card>
+          </BlurFade>
+
+          {/* Marriage Data */}
+          {(case_.fecha_matrimonio || case_.lugar_matrimonio) && (
+            <BlurFade delay={0.2}>
+            <Card className="p-6">
+              <h2 className="text-xl font-semibold mb-4 text-gray-900 dark:text-gray-100">Datos del Matrimonio</h2>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">
+                    Fecha de Matrimonio
+                  </label>
+                  <p className="text-gray-900 dark:text-gray-100">
+                    {case_.fecha_matrimonio
+                      ? format(new Date(case_.fecha_matrimonio), "dd/MM/yyyy")
+                      : '-'
+                    }
+                  </p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">
+                    Lugar de Matrimonio
+                  </label>
+                  <p className="text-gray-900 dark:text-gray-100">{case_.lugar_matrimonio || '-'}</p>
+                </div>
+              </div>
+            </Card>
+            </BlurFade>
+          )}
+
+          {/* Documents Viewer */}
+          <BlurFade delay={0.25}>
+            <DocumentsViewer
+              caseId={caseId}
+              dniImageUrl={case_.dni_image_url}
+              marriageCertUrl={case_.marriage_cert_url}
+            />
+          </BlurFade>
+
+          {/* Conversation Timeline */}
+          <BlurFade delay={0.3}>
+            <Card className="p-6">
+            <h2 className="text-xl font-semibold mb-4 text-gray-900 dark:text-gray-100">Historial de Conversación</h2>
+            <div className="space-y-4">
+              {case_.messages.length === 0 ? (
+                <p className="text-gray-500 dark:text-gray-400 text-center py-8">
+                  No hay mensajes aún
+                </p>
+              ) : (
+                case_.messages.map((message) => (
+                  <div
+                    key={message.id}
+                    className={`flex gap-3 ${
+                      message.role === 'user' ? 'flex-row-reverse' : 'flex-row'
+                    }`}
+                  >
+                    <div
+                      className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${
+                        message.role === 'user'
+                          ? 'bg-blue-500 text-white dark:bg-blue-600'
+                          : 'bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300'
+                      }`}
+                    >
+                      {message.role === 'user' ? (
+                        <User className="w-4 h-4" />
+                      ) : (
+                        <Bot className="w-4 h-4" />
+                      )}
+                    </div>
+                    <div
+                      className={`flex-1 max-w-lg ${
+                        message.role === 'user' ? 'text-right' : 'text-left'
+                      }`}
+                    >
+                      <div
+                        className={`inline-block px-4 py-2 rounded-lg ${
+                          message.role === 'user'
+                            ? 'bg-blue-600 text-white dark:bg-blue-700'
+                            : 'bg-gray-200 text-gray-900 dark:bg-gray-700 dark:text-gray-100'
+                        }`}
+                      >
+                        <p className="whitespace-pre-wrap">{message.content}</p>
+                      </div>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                        {format(new Date(message.created_at), "dd/MM/yyyy HH:mm", { locale: es })}
+                      </p>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+            </Card>
+          </BlurFade>
+        </div>
+
+        {/* Sidebar */}
+        <div className="space-y-6">
+          {/* Status Card */}
+          <BlurFade delay={0.4}>
+            <Card className="p-6 relative overflow-hidden">
+              {case_.status === 'documentacion_completa' && (
+                <BorderBeam 
+                  size={200} 
+                  duration={10}
+                  colorFrom="#10b981"
+                  colorTo="#34d399"
+                />
+              )}
+            <h3 className="text-lg font-semibold mb-4 text-gray-900 dark:text-gray-100">Estado del Caso</h3>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">
+                  Estado
+                </label>
+                <span className={`px-3 py-1 inline-flex text-sm font-semibold rounded-full ${getStatusBadgeColor(case_.status)}`}>
+                  {getStatusLabel(case_.status)}
+                </span>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">
+                  Tipo de Divorcio
+                </label>
+                <p className="text-gray-900 dark:text-gray-100 capitalize">{case_.type || '-'}</p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">
+                  Fase Actual
+                </label>
+                <p className="text-gray-900 dark:text-gray-100 capitalize">
+                  {case_.phase.replace(/_/g, ' ')}
+                </p>
+              </div>
+            </div>
+            </Card>
+          </BlurFade>
+
+          {/* Actions Card */}
+          <BlurFade delay={0.5}>
+            <Card className="p-6">
+            <h3 className="text-lg font-semibold mb-4 text-gray-900 dark:text-gray-100">Acciones</h3>
+            <div className="space-y-2">
+              <Button
+                variant="outline"
+                className="w-full justify-start"
+                onClick={handleDownloadPDF}
+              >
+                <Download className="w-4 h-4 mr-2" />
+                Descargar Demanda
+              </Button>
+              <Button
+                variant="outline"
+                className="w-full justify-start"
+                onClick={handleWhatsAppContact}
+              >
+                <Phone className="w-4 h-4 mr-2" />
+                Contactar por WhatsApp
+              </Button>
+              <div className="text-xs text-gray-500 dark:text-gray-400 pl-2">
+                Número: {case_.phone.split('@')[0]}
+              </div>
+            </div>
+            </Card>
+          </BlurFade>
+
+          {/* Metadata Card */}
+          <BlurFade delay={0.6}>
+            <Card className="p-6">
+            <h3 className="text-lg font-semibold mb-4 text-gray-900 dark:text-gray-100">Metadata</h3>
+            <div className="space-y-3 text-sm">
+              <div>
+                <label className="block text-gray-500 dark:text-gray-400 mb-1">ID del Caso</label>
+                <p className="text-gray-900 dark:text-gray-100 font-mono">#{case_.id}</p>
+              </div>
+              <div>
+                <label className="block text-gray-500 dark:text-gray-400 mb-1">Fecha de Creación</label>
+                <p className="text-gray-900 dark:text-gray-100">
+                  {format(new Date(case_.created_at), "dd/MM/yyyy HH:mm", { locale: es })}
+                </p>
+              </div>
+              <div>
+                <label className="block text-gray-500 dark:text-gray-400 mb-1">Última Actualización</label>
+                <p className="text-gray-900 dark:text-gray-100">
+                  {format(new Date(case_.updated_at), "dd/MM/yyyy HH:mm", { locale: es })}
+                </p>
+              </div>
+              <div>
+                <label className="block text-gray-500 dark:text-gray-400 mb-1">Mensajes</label>
+                <p className="text-gray-900 dark:text-gray-100">{case_.messages.length} mensajes</p>
+              </div>
+            </div>
+            </Card>
+          </BlurFade>
+        </div>
+      </div>
+
+      {/* PDF Generation Modal */}
+      {showPdfModal && (
+        <PdfGenerationModal
+          caseId={caseId}
+          onClose={() => setShowPdfModal(false)}
+        />
+      )}
+    </div>
+  );
+}

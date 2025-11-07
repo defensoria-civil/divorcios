@@ -4,6 +4,8 @@ from presentation.api.routes.health import router as health_router
 from presentation.api.routes.webhook import router as webhook_router
 from presentation.api.routes.cases import router as cases_router
 from presentation.api.routes.metrics import router as metrics_router
+from presentation.api.routes.auth import router as auth_router
+from presentation.api.routes.users import router as users_router
 from presentation.api.middleware.rate_limit import (
     RateLimitMiddleware,
     SecurityHeadersMiddleware,
@@ -41,6 +43,8 @@ def on_startup():
     init_db()
 
 app.include_router(health_router, prefix="/health", tags=["health"])
+app.include_router(auth_router, prefix="/api/auth", tags=["auth"])
 app.include_router(webhook_router, prefix="/webhook", tags=["webhook"])
 app.include_router(cases_router, prefix="/api/cases", tags=["cases"])
 app.include_router(metrics_router, prefix="/api/metrics", tags=["metrics"])
+app.include_router(users_router, prefix="/api/users", tags=["users"])

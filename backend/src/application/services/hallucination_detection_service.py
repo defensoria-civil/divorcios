@@ -1,4 +1,5 @@
 import re
+import json
 import structlog
 from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
@@ -15,8 +16,17 @@ class HallucinationCheckResult:
 
 class HallucinationDetectionService:
     """
-    Servicio para detectar alucinaciones en respuestas del LLM
-    Valida que las respuestas sean apropiadas, factuales y no contengan información inventada
+    Servicio para detectar alucinaciones en respuestas del LLM.
+    
+    Utiliza dos estrategias:
+    1. Validación basada en reglas (patterns, heurísticas)
+    2. Validación con LLM especializado (glm-4.6:cloud) para análisis semántico
+    
+    Responsabilidades:
+    - Detectar información inventada o fabricada
+    - Validar consistencia con contexto proporcionado
+    - Identificar respuestas inapropiadas para asesoramiento legal
+    - Logging de decisiones para auditoría
     """
     
     # Patrones que indican posible alucinación
@@ -43,9 +53,13 @@ class HallucinationDetectionService:
         r"juzgado\s+\d+",  # Juzgados específicos
     ]
     
-    def __init__(self):
+    def __init__(self, llm_router=None):
         self.compiled_patterns = [re.compile(p, re.IGNORECASE) for p in self.HALLUCINATION_PATTERNS]
         self.data_patterns = [re.compile(p, re.IGNORECASE) for p in self.SPECIFIC_DATA_PATTERNS]
+        
+        # LLMRouter para validación semántica avanzada (opcional)
+        self.llm_router = llm_router
+        self.use_llm_validation = llm_router is not None
     
     async def check_response(
         self, 
@@ -136,34 +150,130 @@ class HallucinationDetectionService:
             flags=flags,
             explanation=explanation
         )
-    
-    def _generate_explanation(self, flags: List[str], confidence: float) -> str:
+
+    def _generate_explanation(self, flags: list[str], confidence: float) -> str:
         """Genera explicación legible del resultado"""
         if not flags:
-            return "Respuesta válida sin indicadores de alucinación"
-        
+            return f"Confianza: {confidence:.0%}. Respuesta válida sin indicadores de alucinación."
         explanations = {
             "claims_system_access": "La respuesta afirma tener acceso a sistemas/bases de datos",
             "invents_specific_data": "La respuesta menciona datos específicos no presentes en el contexto",
             "mentions_urls": "La respuesta incluye URLs que podrían no existir",
             "unknown_proper_noun": "Menciona nombres propios no verificables",
             "excessive_length": "Respuesta excesivamente larga (posible sobre-elaboración)",
-            "answers_impossible_question": "Responde con certeza a pregunta que requiere información no disponible"
+            "answers_impossible_question": "Responde con certeza a pregunta que requiere información no disponible",
+            "llm_detected_inconsistency": "El validador LLM detectó inconsistencias",
+            "llm_detected_invented_data": "El validador LLM detectó datos inventados",
+            "llm_detected_inappropriate_advice": "El validador LLM detectó consejo legal inapropiado",
         }
-        
         parts = []
         for flag in flags:
             key = flag.split(":")[0]
             if key in explanations:
                 parts.append(explanations[key])
-        
-        return f"Confianza: {confidence:.0%}. " + "; ".join(parts)
+        joined = "; ".join(parts) if parts else ", ".join(flags)
+        return f"Confianza: {confidence:.0%}. {joined}"
     
-    async def validate_legal_advice(self, response: str) -> HallucinationCheckResult:
+    async def check_with_llm(
+        self,
+        response: str,
+        context: str,
+        question: str
+    ) -> HallucinationCheckResult:
         """
-        Validación específica para asesoramiento legal
-        Asegura que no se den consejos legales específicos fuera del alcance
+        Validación semántica avanzada usando LLM especializado (glm-4.6:cloud).
+        
+        Complementa la validación basada en reglas con análisis de consistencia semántica.
+        
+        Args:
+            response: Respuesta generada por el LLM
+            context: Contexto proporcionado al LLM
+            question: Pregunta original del usuario
+            
+        Returns:
+            HallucinationCheckResult con validación semántica
         """
+        if not self.use_llm_validation:
+            logger.warning("llm_validation_not_available")
+            # Fallback a validación basada en reglas
+            return await self.check_response(response, context, question)
+        
+        validation_prompt = f"""Eres un experto en validar consistencia de respuestas de asistentes de IA.
+
+Analiza si la siguiente RESPUESTA es consistente con el CONTEXTO proporcionado y si responde apropiadamente a la PREGUNTA.
+
+CONTEXTO:
+{context}
+
+PREGUNTA DEL USUARIO:
+{question}
+
+RESPUESTA DEL ASISTENTE:
+{response}
+
+Evalúa los siguientes criterios y responde SOLO con un JSON:
+
+{{
+  "is_consistent": true/false,  // ¿La respuesta es consistente con el contexto?
+  "invents_data": true/false,    // ¿La respuesta inventa datos específicos no presentes en el contexto?
+  "appropriate": true/false,      // ¿La respuesta es apropiada para asesoramiento legal?
+  "confidence": 0.0-1.0,          // Tu nivel de confianza en la validez de la respuesta
+  "issues": ["lista de problemas detectados"],
+  "explanation": "breve explicación"
+}}
+
+Criterios importantes:
+- Si la respuesta menciona fechas, números, nombres que NO están en el contexto: invents_data=true
+- Si la respuesta afirma tener acceso a sistemas/bases de datos: is_consistent=false
+- Si da consejos legales muy específicos sin base: appropriate=false"""
+        
+        try:
+            # Usar modelo especializado para validación (glm-4.6)
+            llm_response = await self.llm_router.chat(
+                messages=[{"role": "user", "content": validation_prompt}],
+                task_type="hallucination_check"
+            )
+            
+            # Parsear respuesta JSON
+            json_text = llm_response.replace("```json", "").replace("```", "").strip()
+            validation_data = json.loads(json_text)
+            
+            # Convertir a HallucinationCheckResult
+            flags = []
+            if not validation_data.get("is_consistent"):
+                flags.append("llm_detected_inconsistency")
+            if validation_data.get("invents_data"):
+                flags.append("llm_detected_invented_data")
+            if not validation_data.get("appropriate"):
+                flags.append("llm_detected_inappropriate_advice")
+            
+            if validation_data.get("issues"):
+                flags.extend([f"llm_issue:{issue}" for issue in validation_data["issues"]])
+            
+            confidence = float(validation_data.get("confidence", 0.5))
+            is_valid = confidence >= 0.7 and validation_data.get("is_consistent", False)
+            explanation = validation_data.get("explanation", "Validación LLM completada")
+            
+            logger.info(
+                "llm_hallucination_check",
+                is_valid=is_valid,
+                confidence=confidence,
+                flags=flags,
+                model="glm-4.6:cloud"
+            )
+            
+            return HallucinationCheckResult(
+                is_valid=is_valid,
+                confidence=confidence,
+                flags=flags,
+                explanation=f"Validación LLM: {explanation}"
+            )
+            
+        except Exception as e:
+            logger.error("llm_validation_error", error=str(e))
+            # Fallback a validación basada en reglas
+            return await self.check_response(response, context, question)
+    
         flags = []
         confidence = 1.0
         

@@ -3,15 +3,12 @@ import { ProtectedRoute } from '@/features/auth/components/ProtectedRoute';
 import { LoginForm } from '@/features/auth/components/LoginForm';
 import { Dashboard } from '@/features/metrics/components/Dashboard';
 import { DashboardLayout } from '@/shared/components/Layout/DashboardLayout';
+import { CasesList } from '@/features/cases/components/CasesList';
+import { CaseDetail } from '@/features/cases/components/CaseDetail';
+import { UsersPage } from '@/features/users/components/UsersPage';
+import { UserRole } from '@/features/auth/types/auth.types';
 
 // Placeholder pages
-function CasesPage() {
-  return <div>Casos (En desarrollo)</div>;
-}
-
-function UsersPage() {
-  return <div>Usuarios (En desarrollo)</div>;
-}
 
 function SettingsPage() {
   return <div>Configuración (En desarrollo)</div>;
@@ -41,7 +38,17 @@ export const router = createBrowserRouter([
     element: (
       <ProtectedRoute>
         <DashboardLayout>
-          <CasesPage />
+          <CasesList />
+        </DashboardLayout>
+      </ProtectedRoute>
+    ),
+  },
+  {
+    path: '/cases/:id',
+    element: (
+      <ProtectedRoute>
+        <DashboardLayout>
+          <CaseDetail />
         </DashboardLayout>
       </ProtectedRoute>
     ),
@@ -49,7 +56,7 @@ export const router = createBrowserRouter([
   {
     path: '/users',
     element: (
-      <ProtectedRoute>
+      <ProtectedRoute requiredRole={UserRole.ADMIN}>
         <DashboardLayout>
           <UsersPage />
         </DashboardLayout>

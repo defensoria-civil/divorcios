@@ -3,35 +3,35 @@ import { LoginCredentials, AuthResponse, UserRole, User } from '../types/auth.ty
 
 export const authService = {
   async login(credentials: LoginCredentials): Promise<AuthResponse> {
-    // Nota: El backend actual usa form data para OAuth2
-    const formData = new FormData();
-    formData.append('username', credentials.email);
-    formData.append('password', credentials.password);
+    // El backend usa JSON con username
+    const response = await apiClient.post<{
+      access_token: string;
+      token_type: string;
+      user: {
+        id: number;
+        username: string;
+        email: string;
+        full_name: string;
+        role: string;
+      };
+    }>('/api/auth/login', {
+      username: credentials.username,
+      password: credentials.password,
+    });
 
-    const response = await apiClient.post<{ access_token: string; token_type: string }>(
-      '/api/token',
-      formData,
-      {
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-      }
-    );
-
-    // TODO: Obtener datos del usuario desde endpoint separado
-    // Por ahora simulamos el usuario desde el token
-    const mockUser: User = {
-      id: 1,
-      email: credentials.email,
-      name: credentials.email.split('@')[0],
-      role: UserRole.OPERADOR,
+    // Mapear la respuesta del backend a nuestro tipo User
+    const user: User = {
+      id: response.data.user.id,
+      email: response.data.user.email,
+      name: response.data.user.full_name || response.data.user.username,
+      role: response.data.user.role === 'admin' ? UserRole.ADMIN : UserRole.OPERADOR,
       created_at: new Date().toISOString(),
     };
 
     return {
       access_token: response.data.access_token,
       token_type: response.data.token_type,
-      user: mockUser,
+      user,
     };
   },
 

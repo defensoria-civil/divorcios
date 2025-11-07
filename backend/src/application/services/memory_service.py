@@ -62,7 +62,13 @@ class MemoryService:
         """Almacena resumen episódico con embedding para búsqueda semántica"""
         # Generar embedding
         embeddings = await self.llm.embed([summary])
-        embedding = embeddings[0] if embeddings else None
+        embedding = None
+        if embeddings and embeddings[0]:
+            emb = embeddings[0]
+            # Asegurar vector 1D
+            if isinstance(emb, list) and len(emb) > 0 and isinstance(emb[0], list):
+                emb = emb[0]
+            embedding = emb
         
         mem = Memory(
             case_id=case_id,
@@ -110,19 +116,26 @@ class MemoryService:
         
         query_embedding = embeddings[0]
         
+        # Si el embedding viene anidado [[...]], aplanarlo
+        if isinstance(query_embedding[0], list):
+            query_embedding = query_embedding[0]
+        
         # Búsqueda vectorial usando pgvector
         # Formato: <-> es el operador de distancia euclidiana
+        # Convertir embedding a formato string de PostgreSQL: '[1,2,3]'
+        embedding_str = str(query_embedding).replace(' ', '')
+        
         result = self.db.execute(
             text("""
                 SELECT id, content, 
-                       embedding <-> :query_embedding::vector AS distance
+                       embedding <-> CAST(:query_embedding AS vector) AS distance
                 FROM memories
                 WHERE case_id = :case_id AND kind = 'episodic'
                 ORDER BY distance
                 LIMIT :limit
             """),
             {
-                "query_embedding": str(query_embedding),
+                "query_embedding": embedding_str,
                 "case_id": case_id,
                 "limit": limit
             }
@@ -141,16 +154,23 @@ class MemoryService:
         
         query_embedding = embeddings[0]
         
+        # Si el embedding viene anidado [[...]], aplanarlo
+        if isinstance(query_embedding[0], list):
+            query_embedding = query_embedding[0]
+        
+        # Convertir embedding a formato string de PostgreSQL: '[1,2,3]'
+        embedding_str = str(query_embedding).replace(' ', '')
+        
         result = self.db.execute(
             text("""
                 SELECT id, title, content, 
-                       embedding <-> :query_embedding::vector AS distance
+                       embedding <-> CAST(:query_embedding AS vector) AS distance
                 FROM semantic_knowledge
                 ORDER BY distance
                 LIMIT :limit
             """),
             {
-                "query_embedding": str(query_embedding),
+                "query_embedding": embedding_str,
                 "limit": limit
             }
         ).fetchall()

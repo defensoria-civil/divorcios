@@ -20,34 +20,58 @@ class WAHAWhatsAppService(WhatsAppService):
             "Content-Type": "application/json"
         }
     
-    async def send_message(self, phone: str, message: str) -> dict:
-        """Envía un mensaje de texto a un número de WhatsApp"""
-        # Normalizar número de teléfono (formato: 549XXXXXXXXX para Argentina)
-        if not phone.startswith("549"):
-            phone = f"549{phone.lstrip('+')}"
+    async def send_message(self, phone_or_chat: str, message: str) -> dict:
+        """Envía un mensaje de texto. Acepta MSISDN o JID (chatId)."""
+        raw = phone_or_chat.strip()
+        # Determinar chatId y phone según formato recibido
+        if "@" in raw:
+            chat_id = raw  # ya viene como JID (p.ej. 549xxxxxxxxx@c.us o 261...@lid)
+            msisdn = raw.split("@")[0]
+        else:
+            msisdn = raw.lstrip("+")
+            if not msisdn.startswith("549"):
+                msisdn = f"549{msisdn}"
+            chat_id = f"{msisdn}@c.us"
         
         url = f"{self.base_url}/api/sendText"
         payload = {
             "session": self.session_name,
-            "chatId": f"{phone}@c.us",
+            "chatId": chat_id,
             "text": message
         }
         
         try:
-            async with httpx.AsyncClient(timeout=30) as client:
+            async with httpx.AsyncClient(timeout=30, verify=False) as client:
                 response = await client.post(url, json=payload, headers=self._headers())
+                if response.status_code >= 400:
+                    body = response.text
+                    logger.warning("whatsapp_send_primary_failed", status=response.status_code, body=body)
+                    # Fallback: usar parámetro 'phone' en lugar de 'chatId'
+                    alt_payload = {"session": self.session_name, "phone": msisdn, "text": message}
+                    alt_resp = await client.post(url, json=alt_payload, headers=self._headers())
+                    alt_resp.raise_for_status()
+                    result = alt_resp.json()
+                    logger.info("whatsapp_message_sent_fallback_phone", phone=msisdn, chat_id=chat_id, result=result)
+                    return result
                 response.raise_for_status()
                 result = response.json()
-                logger.info("whatsapp_message_sent", phone=phone, result=result)
+                logger.info("whatsapp_message_sent", phone=msisdn, chat_id=chat_id, result=result)
                 return result
         except Exception as e:
-            logger.error("whatsapp_send_error", phone=phone, error=str(e))
+            logger.error("whatsapp_send_error", phone=msisdn, chat_id=chat_id, error=str(e))
             raise
     
-    async def send_document(self, phone: str, file_content: bytes, filename: str, caption: Optional[str] = None) -> dict:
-        """Envía un documento (PDF, JPG, PNG) a un número de WhatsApp"""
-        if not phone.startswith("549"):
-            phone = f"549{phone.lstrip('+')}"
+    async def send_document(self, phone_or_chat: str, file_content: bytes, filename: str, caption: Optional[str] = None) -> dict:
+        """Envía un documento (PDF, JPG, PNG). Acepta MSISDN o JID (chatId)."""
+        raw = phone_or_chat.strip()
+        if "@" in raw:
+            chat_id = raw
+            msisdn = raw.split("@")[0]
+        else:
+            msisdn = raw.lstrip("+")
+            if not msisdn.startswith("549"):
+                msisdn = f"549{msisdn}"
+            chat_id = f"{msisdn}@c.us"
         
         url = f"{self.base_url}/api/sendFile"
         
@@ -57,7 +81,7 @@ class WAHAWhatsAppService(WhatsAppService):
         
         payload = {
             "session": self.session_name,
-            "chatId": f"{phone}@c.us",
+            "chatId": chat_id,
             "file": {
                 "mimetype": self._get_mimetype(filename),
                 "filename": filename,
@@ -67,14 +91,26 @@ class WAHAWhatsAppService(WhatsAppService):
         }
         
         try:
-            async with httpx.AsyncClient(timeout=60) as client:
+            async with httpx.AsyncClient(timeout=60, verify=False) as client:
                 response = await client.post(url, json=payload, headers=self._headers())
+                if response.status_code >= 400:
+                    body = response.text
+                    logger.warning("whatsapp_send_file_primary_failed", status=response.status_code, body=body)
+                    # Fallback: usar 'phone' en lugar de 'chatId'
+                    alt_payload = dict(payload)
+                    alt_payload.pop("chatId", None)
+                    alt_payload["phone"] = msisdn
+                    alt_resp = await client.post(url, json=alt_payload, headers=self._headers())
+                    alt_resp.raise_for_status()
+                    result = alt_resp.json()
+                    logger.info("whatsapp_document_sent_fallback_phone", phone=msisdn, chat_id=chat_id, filename=filename, result=result)
+                    return result
                 response.raise_for_status()
                 result = response.json()
-                logger.info("whatsapp_document_sent", phone=phone, filename=filename, result=result)
+                logger.info("whatsapp_document_sent", phone=msisdn, chat_id=chat_id, filename=filename, result=result)
                 return result
         except Exception as e:
-            logger.error("whatsapp_send_document_error", phone=phone, filename=filename, error=str(e))
+            logger.error("whatsapp_send_document_error", phone=msisdn, chat_id=chat_id, filename=filename, error=str(e))
             raise
     
     async def download_media(self, media_id: str) -> bytes:
@@ -82,7 +118,7 @@ class WAHAWhatsAppService(WhatsAppService):
         url = f"{self.base_url}/api/files/{media_id}"
         
         try:
-            async with httpx.AsyncClient(timeout=60) as client:
+            async with httpx.AsyncClient(timeout=60, verify=False) as client:
                 response = await client.get(url, headers=self._headers())
                 response.raise_for_status()
                 logger.info("whatsapp_media_downloaded", media_id=media_id, size=len(response.content))
