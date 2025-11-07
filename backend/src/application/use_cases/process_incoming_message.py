@@ -123,8 +123,14 @@ class ProcessIncomingMessageUseCase:
         elif case.phase == "nombres_conyuge":
             return await self._phase_nombres_conyuge(case, text)
         
-        elif case.phase == "cuit_conyuge":
-            return await self._phase_cuit_conyuge(case, text)
+        elif case.phase == "doc_conyuge":
+            return await self._phase_doc_conyuge(case, text)
+        
+        elif case.phase == "fecha_nacimiento_conyuge":
+            return await self._phase_fecha_nacimiento_conyuge(case, text)
+        
+        elif case.phase == "domicilio_conyuge":
+            return await self._phase_domicilio_conyuge(case, text)
         
         elif case.phase == "info_matrimonio":
             return await self._phase_info_matrimonio(case, text)
@@ -298,38 +304,73 @@ class ProcessIncomingMessageUseCase:
         case.nombres_conyuge = nombres
         # Mantener nombre_conyuge para compatibilidad
         case.nombre_conyuge = f"{nombres} {case.apellido_conyuge}"
-        case.phase = "cuit_conyuge"
+        # Aceptar DNI o CUIT/CUIL en el próximo paso
+        case.phase = "doc_conyuge"
         self.cases.update(case)
-        return f"Perfecto, {nombres} {case.apellido_conyuge}. ¿Cuál es su CUIT/CUIL? (11 dígitos)"
-    
-    async def _phase_cuit_conyuge(self, case, text: str) -> str:
-        """Fase: recolección de CUIT/CUIL del cónyuge"""
-        import re
-        
-        # Limpiar el CUIT
-        cuit_clean = re.sub(r'[\s-]', '', text.strip())
-        
-        # Validar formato
-        if not re.match(r'^\d{11}$', cuit_clean):
-            return "El CUIT/CUIL debe tener 11 dígitos.\n\nEjemplo: 27-29933256-8 o 27299332568"
-        
-        # Extraer DNI
-        dni = cuit_clean[2:10]
-        cuit_formatted = f"{cuit_clean[0:2]}-{dni}-{cuit_clean[10]}"
-        
-        case.cuit_conyuge = cuit_formatted
-        case.dni_conyuge = dni
-        case.phase = "info_matrimonio"
-        self.cases.update(case)
-        
         return (
-            f"✅ Datos del cónyuge: {case.nombre_conyuge}\n"
-            f"CUIT/CUIL: {cuit_formatted}\n"
-            f"DNI: {dni}\n\n"
-            "¿Cuándo y dónde se casaron?\n\n"
-            "Ejemplo: 'Nos casamos el 15/03/2005 en San Rafael Mendoza' o '15/03/2005, San Rafael, Mendoza'"
+            f"Perfecto, {nombres} {case.apellido_conyuge}. Ahora necesito el documento del cónyuge.\n\n"
+            "Podés enviar:\n"
+            "- Solo DNI (7 u 8 dígitos), o\n"
+            "- CUIT/CUIL (11 dígitos, con o sin guiones)."
         )
     
+    async def _phase_doc_conyuge(self, case, text: str) -> str:
+        """Fase: documento del cónyuge (acepta DNI o CUIT/CUIL)."""
+        import re
+        value = re.sub(r'[\s-]', '', text.strip())
+        if re.match(r'^\d{11}$', value):
+            # CUIT/CUIL
+            dni = value[2:10]
+            case.cuit_conyuge = f"{value[0:2]}-{dni}-{value[10]}"
+            case.dni_conyuge = dni
+        elif re.match(r'^\d{7,8}$', value):
+            # Solo DNI
+            case.dni_conyuge = value
+        else:
+            return (
+                "El documento debe ser DNI (7/8 dígitos) o CUIT/CUIL (11 dígitos).\n"
+                "Ejemplos: 12345678 o 27-29933256-8"
+            )
+        # Siguiente: fecha de nacimiento del cónyuge
+        case.phase = "fecha_nacimiento_conyuge"
+        self.cases.update(case)
+        return "Ahora, ¿podrías indicarme la fecha de nacimiento del cónyuge? (DD/MM/AAAA)"
+    
+    async def _phase_fecha_nacimiento_conyuge(self, case, text: str) -> str:
+        """Fase: fecha de nacimiento del cónyuge"""
+        result = self.validator_date.validate_birth_date(text)
+        if not result.is_valid:
+            errors = "\n- ".join(result.errors)
+            return f"La fecha no es válida:\n- {errors}\n\nIngresá la fecha de nacimiento en formato DD/MM/AAAA."
+        from datetime import datetime
+        try:
+            case.fecha_nacimiento_conyuge = datetime.strptime(result.normalized_date, "%d/%m/%Y").date()
+        except:
+            pass
+        case.phase = "domicilio_conyuge"
+        self.cases.update(case)
+        return "Gracias. ¿Cuál es el domicilio actual del cónyuge?\n\nEjemplo: San Martín 123, San Rafael, Mendoza"
+
+    async def _phase_domicilio_conyuge(self, case, text: str) -> str:
+        """Fase: domicilio del cónyuge"""
+        result = self.validator_addr.validate_address(text, is_marital_address=False)
+        if not result.is_valid:
+            errors = "\n- ".join(result.errors)
+            return (
+                "La dirección está incompleta:\n- " + errors +
+                "\n\nPodés responder de estas formas:\n"
+                "- Calle y número (ej: 'San Martín 123')\n"
+                "- Ciudad y provincia (ej: 'San Rafael Mendoza' o 'San Rafael, Mendoza')\n"
+                "- O todo junto: 'San Martín 123, San Rafael Mendoza'"
+            )
+        case.domicilio_conyuge = result.normalized_address or text.strip()
+        case.phase = "info_matrimonio"
+        self.cases.update(case)
+        return (
+            "Gracias, anoté el domicilio del cónyuge.\n\n"
+            "Ahora, para avanzar con el trámite, necesito saber la fecha y el lugar del casamiento."
+        )
+
     async def _phase_info_matrimonio(self, case, text: str) -> str:
         """Fase: información del matrimonio con parsing de lenguaje natural"""
         import re
