@@ -159,6 +159,9 @@ class ProcessIncomingMessageUseCase:
         elif case.phase == "info_matrimonio":
             return await self._phase_info_matrimonio(case, text)
         
+        elif case.phase == "ultimo_domicilio_conyugal":
+            return await self._phase_ultimo_domicilio_conyugal(case, text)
+        
         elif case.phase == "hijos":
             return await self._phase_hijos(case, text)
         
@@ -431,16 +434,45 @@ class ProcessIncomingMessageUseCase:
             return f"Ya anoté la fecha {fecha_str}. ¿En qué ciudad y provincia se casaron?\n\nEjemplo: 'San Rafael, Mendoza' o 'San Rafael Mendoza'"
         
         case.lugar_matrimonio = lugar
-        case.phase = "hijos"
+        # Antes de hijos, pedir último domicilio conyugal (competencia)
+        case.phase = "ultimo_domicilio_conyugal"
         self.cases.update(case)
         
         return (
             f"¡Perfecto! Ya anoté que se casaron el {fecha_str} en {case.lugar_matrimonio}.\n\n"
-            "Ahora vamos a registrar a los hijos que corresponda incluir en el convenio.\n\n"
+            "Para determinar el juzgado competente necesito el último domicilio conyugal. "
+            "Indicá dirección completa (calle y número, ciudad y provincia)."
             "Solo se incluyen: (a) menores de 18; (b) de 18 a 25 que estudian y no son económicamente independientes; o (c) de cualquier edad con CUD.\n\n"
             "¿Tienen hijos en común con estas características? Si no, respondé 'no'."
         )
     
+    async def _phase_ultimo_domicilio_conyugal(self, case, text: str) -> str:
+        """Solicita y valida el último domicilio conyugal (competencia)."""
+        result = self.validator_addr.validate_address(text, is_marital_address=True)
+        if not result.is_valid:
+            errors = "\n- ".join(result.errors)
+            return (
+                "La dirección está incompleta:\n- " + errors +
+                "\n\nIndicá calle y número, ciudad y provincia (ej: 'San Martín 123, San Rafael, Mendoza')."
+            )
+        case.ultimo_domicilio_conyugal = result.normalized_address or text.strip()
+        case.phase = "hijos"
+        self.cases.update(case)
+        
+        # Advertencia si no es San Rafael (simple heurística)
+        warn = ""
+        low = (case.ultimo_domicilio_conyugal or '').lower()
+        if "san rafael" not in low:
+            warn = ("\n\n⚠️ El último domicilio conyugal no parece estar en San Rafael. "
+                    "Podría corresponder otro juzgado competente. Un operador lo revisará.")
+        
+        return (
+            "Gracias. Registré el último domicilio conyugal." + warn + "\n\n" +
+            "Ahora vamos a registrar a los hijos que corresponda incluir en el convenio.\n\n"
+            "Solo se incluyen: (a) menores de 18; (b) de 18 a 25 que estudian y no son económicamente independientes; o (c) de cualquier edad con CUD.\n\n"
+            "¿Tienen hijos en común con estas características? Si no, respondé 'no'."
+        )
+
     async def _phase_hijos(self, case, text: str) -> str:
         """Fase: información sobre hijos (introducción y decisión)"""
         low = text.lower().strip()

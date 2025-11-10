@@ -159,6 +159,7 @@ def get_case(
         "domicilio": case.domicilio,
         "fecha_matrimonio": case.fecha_matrimonio.isoformat() if case.fecha_matrimonio else None,
         "lugar_matrimonio": case.lugar_matrimonio,
+        "ultimo_domicilio_conyugal": case.ultimo_domicilio_conyugal,
         # Perfil económico (declaración jurada)
         "situacion_laboral": case.situacion_laboral,
         "ingreso_mensual_neto": case.ingreso_mensual_neto,
@@ -211,7 +212,7 @@ def update_case(case_id: int, updates: dict, db: Session = Depends(get_db), _: d
         "apellido_conyuge", "nombres_conyuge", "dni_conyuge", "cuit_conyuge",
         "domicilio_conyuge", "email_conyuge", "ocupacion_conyuge", "nacionalidad_conyuge",
         "fecha_nacimiento_conyuge", "phone_conyuge",
-        "fecha_matrimonio", "lugar_matrimonio", "fecha_separacion",
+        "fecha_matrimonio", "lugar_matrimonio", "ultimo_domicilio_conyugal", "fecha_separacion",
         "acta_numero", "acta_libro", "acta_anio", "acta_foja", "acta_oficina",
         "tiene_hijos", "info_hijos", "tiene_bienes", "info_bienes",
         # Perfil económico
@@ -293,7 +294,9 @@ def validate_case_data(case_id: int, db: Session = Depends(get_db), _: dict = De
             {"field": "apellido_conyuge", "label": "Apellido del cónyuge", "value": case.apellido_conyuge},
             {"field": "nombres_conyuge", "label": "Nombres del cónyuge", "value": case.nombres_conyuge},
             {"field": "dni_conyuge", "label": "DNI del cónyuge", "value": case.dni_conyuge},
+            {"field": "domicilio_conyuge", "label": "Domicilio del cónyuge", "value": case.domicilio_conyuge},
             {"field": "fecha_matrimonio", "label": "Fecha de matrimonio", "value": case.fecha_matrimonio},
+            {"field": "ultimo_domicilio_conyugal", "label": "Último domicilio conyugal", "value": case.ultimo_domicilio_conyugal},
             {"field": "lugar_matrimonio", "label": "Lugar de matrimonio", "value": case.lugar_matrimonio},
             {"field": "acta_numero", "label": "Número de acta", "value": case.acta_numero},
             {"field": "acta_libro", "label": "Libro de acta", "value": case.acta_libro},
@@ -442,7 +445,7 @@ def download_petition(case_id: int, db: Session = Depends(get_db), _: dict = Dep
         "fecha_matrimonio": case.fecha_matrimonio,
         "lugar_matrimonio": case.lugar_matrimonio,
         "fecha_separacion": case.fecha_separacion,
-        "ultimo_domicilio_conyugal": case.domicilio,  # Usar domicilio actual si no hay otro
+        "ultimo_domicilio_conyugal": case.ultimo_domicilio_conyugal or case.domicilio,
         
         # Datos del acta de matrimonio
         "acta_numero": case.acta_numero,

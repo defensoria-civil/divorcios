@@ -36,6 +36,8 @@ class Case(Base):
     fecha_matrimonio = Column(Date, nullable=True)
     lugar_matrimonio = Column(String(255), nullable=True)
     fecha_separacion = Column(Date, nullable=True)
+    # último domicilio conyugal (para competencia)
+    ultimo_domicilio_conyugal = Column(Text, nullable=True)
     
     # datos del acta de matrimonio (extraídos por OCR)
     acta_numero = Column(String(16), nullable=True)

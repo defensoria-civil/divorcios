@@ -44,7 +44,9 @@ MIGRATIONS = [
     ("patrimonio_inmuebles_conyuge", "ALTER TABLE cases ADD COLUMN IF NOT EXISTS patrimonio_inmuebles_conyuge TEXT;"),
     ("patrimonio_registrables_conyuge", "ALTER TABLE cases ADD COLUMN IF NOT EXISTS patrimonio_registrables_conyuge TEXT;"),
     ("econ_elegible_preliminar_conyuge", "ALTER TABLE cases ADD COLUMN IF NOT EXISTS econ_elegible_preliminar_conyuge BOOLEAN;"),
-    ("econ_razones_conyuge", "ALTER TABLE cases ADD COLUMN IF NOT EXISTS econ_razones_conyuge TEXT;")
+    ("econ_razones_conyuge", "ALTER TABLE cases ADD COLUMN IF NOT EXISTS econ_razones_conyuge TEXT;"),
+    # último domicilio conyugal
+    ("ultimo_domicilio_conyugal", "ALTER TABLE cases ADD COLUMN IF NOT EXISTS ultimo_domicilio_conyugal TEXT;")
 ]
 
 def run():
