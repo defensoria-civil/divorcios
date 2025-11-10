@@ -14,6 +14,7 @@ import BorderBeam from '@/shared/components/magicui/BorderBeam';
 import { PdfGenerationModal } from './PdfGenerationModal';
 import { DocumentsViewer } from './DocumentsViewer';
 import { EconomicProfileCard } from './EconomicProfileCard';
+import { EconomicBotReport } from './EconomicBotReport';
 
 export function CaseDetail() {
   const { id } = useParams<{ id: string }>();
@@ -263,7 +264,7 @@ export function CaseDetail() {
             </BlurFade>
           )}
 
-          {/* Economic Profile */}
+          {/* Economic Profile - Solicitante */}
           <BlurFade delay={0.22}>
             <EconomicProfileCard
               caseId={caseId}
@@ -280,6 +281,37 @@ export function CaseDetail() {
               }}
             />
           </BlurFade>
+
+          {/* Economic Profile - Cónyuge (solo conjunta) */}
+          {case_.type === 'conjunta' && (
+            <BlurFade delay={0.23}>
+              <div className="space-y-4">
+                <EconomicProfileCard
+                  caseId={caseId}
+                  data={{
+                    situacion_laboral: case_.situacion_laboral_conyuge,
+                    ingreso_mensual_neto: case_.ingreso_mensual_neto_conyuge as any,
+                    vivienda_tipo: case_.vivienda_tipo_conyuge,
+                    alquiler_mensual: case_.alquiler_mensual_conyuge as any,
+                    patrimonio_inmuebles: case_.patrimonio_inmuebles_conyuge,
+                    patrimonio_registrables: case_.patrimonio_registrables_conyuge,
+                    econ_elegible_preliminar: case_.econ_elegible_preliminar_conyuge as any,
+                    econ_razones: case_.econ_razones_conyuge as any,
+                    type: case_.type,
+                  }}
+                />
+                {/* Informe del bot visible en conjunta */}
+                <EconomicBotReport caseId={caseId} summary={
+                  (() => {
+                    const partes: string[] = [];
+                    if (typeof case_.econ_razones === 'string') partes.push(`Solicitante: ${case_.econ_razones}`);
+                    if (typeof case_.econ_razones_conyuge === 'string') partes.push(`Cónyuge: ${case_.econ_razones_conyuge}`);
+                    return partes.join('\n\n');
+                  })()
+                } />
+              </div>
+            </BlurFade>
+          )}
 
           {/* Documents Viewer */}
           <BlurFade delay={0.25}>

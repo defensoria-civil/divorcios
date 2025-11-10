@@ -34,6 +34,15 @@ export interface CaseDetail extends Case {
   patrimonio_registrables?: string | null;
   econ_elegible_preliminar?: boolean | null;
   econ_razones?: string | null;
+  // Cónyuge (solo para conjunta)
+  situacion_laboral_conyuge?: string | null;
+  ingreso_mensual_neto_conyuge?: number | null;
+  vivienda_tipo_conyuge?: string | null;
+  alquiler_mensual_conyuge?: number | null;
+  patrimonio_inmuebles_conyuge?: string | null;
+  patrimonio_registrables_conyuge?: string | null;
+  econ_elegible_preliminar_conyuge?: boolean | null;
+  econ_razones_conyuge?: string | null;
 }
 
 export interface CaseFilters {

@@ -35,7 +35,16 @@ MIGRATIONS = [
     ("patrimonio_inmuebles", "ALTER TABLE cases ADD COLUMN IF NOT EXISTS patrimonio_inmuebles TEXT;"),
     ("patrimonio_registrables", "ALTER TABLE cases ADD COLUMN IF NOT EXISTS patrimonio_registrables TEXT;"),
     ("econ_elegible_preliminar", "ALTER TABLE cases ADD COLUMN IF NOT EXISTS econ_elegible_preliminar BOOLEAN;"),
-    ("econ_razones", "ALTER TABLE cases ADD COLUMN IF NOT EXISTS econ_razones TEXT;")
+    ("econ_razones", "ALTER TABLE cases ADD COLUMN IF NOT EXISTS econ_razones TEXT;"),
+    # Spouse
+    ("situacion_laboral_conyuge", "ALTER TABLE cases ADD COLUMN IF NOT EXISTS situacion_laboral_conyuge VARCHAR(32);"),
+    ("ingreso_mensual_neto_conyuge", "ALTER TABLE cases ADD COLUMN IF NOT EXISTS ingreso_mensual_neto_conyuge INTEGER;"),
+    ("vivienda_tipo_conyuge", "ALTER TABLE cases ADD COLUMN IF NOT EXISTS vivienda_tipo_conyuge VARCHAR(16);"),
+    ("alquiler_mensual_conyuge", "ALTER TABLE cases ADD COLUMN IF NOT EXISTS alquiler_mensual_conyuge INTEGER;"),
+    ("patrimonio_inmuebles_conyuge", "ALTER TABLE cases ADD COLUMN IF NOT EXISTS patrimonio_inmuebles_conyuge TEXT;"),
+    ("patrimonio_registrables_conyuge", "ALTER TABLE cases ADD COLUMN IF NOT EXISTS patrimonio_registrables_conyuge TEXT;"),
+    ("econ_elegible_preliminar_conyuge", "ALTER TABLE cases ADD COLUMN IF NOT EXISTS econ_elegible_preliminar_conyuge BOOLEAN;"),
+    ("econ_razones_conyuge", "ALTER TABLE cases ADD COLUMN IF NOT EXISTS econ_razones_conyuge TEXT;")
 ]
 
 def run():

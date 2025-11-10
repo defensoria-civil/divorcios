@@ -168,6 +168,15 @@ def get_case(
         "patrimonio_registrables": case.patrimonio_registrables,
         "econ_elegible_preliminar": case.econ_elegible_preliminar,
         "econ_razones": case.econ_razones,
+        # Perfil económico cónyuge (si aplica)
+        "situacion_laboral_conyuge": case.situacion_laboral_conyuge,
+        "ingreso_mensual_neto_conyuge": case.ingreso_mensual_neto_conyuge,
+        "vivienda_tipo_conyuge": case.vivienda_tipo_conyuge,
+        "alquiler_mensual_conyuge": case.alquiler_mensual_conyuge,
+        "patrimonio_inmuebles_conyuge": case.patrimonio_inmuebles_conyuge,
+        "patrimonio_registrables_conyuge": case.patrimonio_registrables_conyuge,
+        "econ_elegible_preliminar_conyuge": case.econ_elegible_preliminar_conyuge,
+        "econ_razones_conyuge": case.econ_razones_conyuge,
         "dni_image_url": case.dni_image_url,
         "marriage_cert_url": case.marriage_cert_url,
         "created_at": case.created_at.isoformat(),
@@ -207,11 +216,30 @@ def update_case(case_id: int, updates: dict, db: Session = Depends(get_db), _: d
         "tiene_hijos", "info_hijos", "tiene_bienes", "info_bienes",
         # Perfil económico
         "situacion_laboral", "ingreso_mensual_neto", "vivienda_tipo", "alquiler_mensual",
-        "patrimonio_inmuebles", "patrimonio_registrables", "econ_elegible_preliminar", "econ_razones"
+        "patrimonio_inmuebles", "patrimonio_registrables", "econ_elegible_preliminar", "econ_razones",
+        # Perfil económico cónyuge (conjunto)
+        "situacion_laboral_conyuge", "ingreso_mensual_neto_conyuge", "vivienda_tipo_conyuge", "alquiler_mensual_conyuge",
+        "patrimonio_inmuebles_conyuge", "patrimonio_registrables_conyuge", "econ_elegible_preliminar_conyuge", "econ_razones_conyuge"
     ]
     
     # Actualizar solo campos permitidos
     updated_fields = []
+    # Acción opcional: si el operador aprueba el informe del bot,
+    # almacenarlo como conocimiento semántico
+    if updates.get("econ_bot_report_approved") and updates.get("econ_bot_report_text"):
+        try:
+            from application.use_cases.ingest_legal_document import IngestLegalDocumentUseCase
+            use_case = IngestLegalDocumentUseCase(db)
+            # Título con referencia de caso
+            import asyncio
+            asyncio.run(use_case.execute(
+                title=f"BLSG - Informe aprobado Caso #{case_id}",
+                content=str(updates.get("econ_bot_report_text")),
+                category="blsg"
+            ))
+        except Exception as e:
+            logger.error("econ_bot_report_ingest_failed", case_id=case_id, error=str(e))
+
     for field, value in updates.items():
         if field in allowed_fields and hasattr(case, field):
             # Convertir fechas de string a date si es necesario
@@ -307,6 +335,20 @@ def validate_case_data(case_id: int, db: Session = Depends(get_db), _: dict = De
         field_copy = field_info.copy()
         if field_copy["value"] is not None:
             optional_complete.append(field_copy)
+
+    # Para conjunta: incluir bloque económico del cónyuge como opcional
+    if (case.type or '').lower() == 'conjunta':
+        spouse_optional = [
+            {"field": "situacion_laboral_conyuge", "label": "Situación laboral (cónyuge)", "value": case.situacion_laboral_conyuge},
+            {"field": "ingreso_mensual_neto_conyuge", "label": "Ingreso mensual (cónyuge)", "value": case.ingreso_mensual_neto_conyuge},
+            {"field": "vivienda_tipo_conyuge", "label": "Vivienda (cónyuge)", "value": case.vivienda_tipo_conyuge},
+            {"field": "alquiler_mensual_conyuge", "label": "Alquiler (cónyuge)", "value": case.alquiler_mensual_conyuge},
+            {"field": "patrimonio_inmuebles_conyuge", "label": "Inmuebles (cónyuge)", "value": case.patrimonio_inmuebles_conyuge},
+            {"field": "patrimonio_registrables_conyuge", "label": "Registrables (cónyuge)", "value": case.patrimonio_registrables_conyuge},
+        ]
+        for f in spouse_optional:
+            if f["value"] is not None and f["value"] != '':
+                optional_complete.append(f)
     
     is_valid = len(missing) == 0
     

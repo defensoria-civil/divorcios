@@ -75,6 +75,16 @@ class Case(Base):
     econ_elegible_preliminar = Column(Boolean, nullable=True)
     econ_razones = Column(Text, nullable=True)
 
+    # economic profile - spouse (only for divorcio conjunto)
+    situacion_laboral_conyuge = Column(String(32), nullable=True)
+    ingreso_mensual_neto_conyuge = Column(Integer, nullable=True)
+    vivienda_tipo_conyuge = Column(String(16), nullable=True)
+    alquiler_mensual_conyuge = Column(Integer, nullable=True)
+    patrimonio_inmuebles_conyuge = Column(Text, nullable=True)
+    patrimonio_registrables_conyuge = Column(Text, nullable=True)
+    econ_elegible_preliminar_conyuge = Column(Boolean, nullable=True)
+    econ_razones_conyuge = Column(Text, nullable=True)
+
     messages = relationship("Message", back_populates="case", cascade="all, delete-orphan")
 
 class Message(Base):
