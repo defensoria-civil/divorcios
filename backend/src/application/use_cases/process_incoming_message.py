@@ -123,6 +123,30 @@ class ProcessIncomingMessageUseCase:
         elif case.phase == "nombres_conyuge":
             return await self._phase_nombres_conyuge(case, text)
         
+        elif case.phase == "econ_intro":
+            return await self._phase_econ_intro(case, text)
+        
+        elif case.phase == "econ_situacion":
+            return await self._phase_econ_situacion(case, text)
+        
+        elif case.phase == "econ_ingreso":
+            return await self._phase_econ_ingreso(case, text)
+        
+        elif case.phase == "econ_vivienda":
+            return await self._phase_econ_vivienda(case, text)
+        
+        elif case.phase == "econ_alquiler":
+            return await self._phase_econ_alquiler(case, text)
+        
+        elif case.phase == "econ_patrimonio_inmuebles":
+            return await self._phase_econ_patrimonio_inmuebles(case, text)
+        
+        elif case.phase == "econ_patrimonio_registrables":
+            return await self._phase_econ_patrimonio_registrables(case, text)
+        
+        elif case.phase == "econ_cierre":
+            return await self._phase_econ_cierre(case, text)
+        
         elif case.phase == "doc_conyuge":
             return await self._phase_doc_conyuge(case, text)
         
@@ -268,8 +292,8 @@ class ProcessIncomingMessageUseCase:
             )
         
         case.domicilio = result.normalized_address or text.strip()
-        # Pasar directamente a la fase esperada por el dispatcher
-        case.phase = "apellido_conyuge"
+        # Nueva sección: perfil económico (declaración jurada para BLSG)
+        case.phase = "econ_intro"
         case.status = "datos_personales_completos"
         self.cases.update(case)
         
@@ -278,9 +302,9 @@ class ProcessIncomingMessageUseCase:
         await self.memory.store_episodic_memory(case.id, summary)
         
         return (
-            "✅ Datos personales completos!\n\n"
-            "Ahora necesito información sobre tu cónyuge.\n\n"
-            "¿Cuál es el apellido de tu cónyuge?"
+            "Antes de seguir, vamos a registrar algunos datos económicos para evaluar el Beneficio de Litigar sin Gastos (BLSG). "
+            "Es una declaración jurada y luego un operador la va a revisar con tu documentación.\n\n"
+            "¿Cuál es tu situación laboral? Opciones: desocupado/a, relación de dependencia, autónomo/monotributo, informal/changas, jubilación/pensión/beneficio u otro."
         )
     
     async def _phase_apellido_conyuge(self, case, text: str) -> str:
@@ -648,6 +672,160 @@ Respuesta:"""
         response = await self.llm.chat([{"role": "system", "content": system_prompt}])
         return response.strip()
     
+    # ===== Sección PERFIL ECONÓMICO =====
+    async def _phase_econ_intro(self, case, text: str) -> str:
+        # Primer mensaje ya advirtió; pasamos a situacion laboral interpretando la respuesta
+        return await self._phase_econ_situacion(case, text)
+
+    async def _phase_econ_situacion(self, case, text: str) -> str:
+        low = text.lower().strip()
+        mapping = {
+            "desocupado": "desocupado",
+            "desempleado": "desocupado",
+            "dependencia": "dependencia",
+            "empleado": "dependencia",
+            "autonomo": "autonomo",
+            "monotributo": "autonomo",
+            "monotributista": "autonomo",
+            "informal": "informal",
+            "changas": "informal",
+            "jubil": "jubilado",
+            "pension": "jubilado",
+            "beneficio": "jubilado",
+        }
+        cat = None
+        for k, v in mapping.items():
+            if k in low:
+                cat = v
+                break
+        if not cat:
+            cat = "otro"
+        case.situacion_laboral = cat
+        # Tips documentales
+        if cat == "desocupado":
+            case.econ_razones = (case.econ_razones or "") + "\nDoc: Certificado Negativo ANSES: https://servicioswww.anses.gob.ar/censite/index.aspx"
+        elif cat == "dependencia":
+            case.econ_razones = (case.econ_razones or "") + "\nDoc: último recibo de sueldo"
+        elif cat == "autonomo":
+            case.econ_razones = (case.econ_razones or "") + "\nDoc: constancia/posición AFIP"
+        self.cases.update(case)
+        # Pedir ingreso si corresponde
+        if cat in ("dependencia", "autonomo", "informal", "jubilado"):
+            case.phase = "econ_ingreso"
+            self.cases.update(case)
+            return "¿Cuál es tu ingreso mensual neto? Indicá solo el monto en pesos (ej: 250000)."
+        # Si desocupado u otro, pasar a vivienda
+        case.phase = "econ_vivienda"
+        self.cases.update(case)
+        return "¿Tu vivienda es propia, alquilada o cedida/prestada?"
+
+    async def _phase_econ_ingreso(self, case, text: str) -> str:
+        import re
+        s = text.replace(".", "").replace(",", "").lower()
+        s = s.replace("k", "000")
+        m = re.search(r"\d+", s)
+        if not m:
+            return "Indicá un número en pesos, por favor (ej: 250000)."
+        case.ingreso_mensual_neto = int(m.group())
+        self.cases.update(case)
+        case.phase = "econ_vivienda"
+        return "¿Tu vivienda es propia, alquilada o cedida/prestada?"
+
+    async def _phase_econ_vivienda(self, case, text: str) -> str:
+        low = text.lower()
+        if "alquil" in low:
+            case.vivienda_tipo = "alquilada"
+            case.phase = "econ_alquiler"
+            self.cases.update(case)
+            return "¿Cuánto pagás por mes de alquiler? (monto en pesos)"
+        elif "prop" in low:
+            case.vivienda_tipo = "propia"
+        else:
+            case.vivienda_tipo = "cedida"
+        self.cases.update(case)
+        case.phase = "econ_patrimonio_inmuebles"
+        return "¿Tenés inmuebles a tu nombre? Si sí, indicá ciudad/provincia (ej: 'casa en San Rafael, Mendoza'). Podés responder 'no'."
+
+    async def _phase_econ_alquiler(self, case, text: str) -> str:
+        import re
+        m = re.search(r"\d+", text.replace(".", "").replace(",", ""))
+        if not m:
+            return "Indicá un número en pesos, por favor (ej: 120000)."
+        case.alquiler_mensual = int(m.group())
+        self.cases.update(case)
+        case.phase = "econ_patrimonio_inmuebles"
+        return "¿Tenés inmuebles a tu nombre? Si sí, indicá ciudad/provincia. Podés responder 'no'."
+
+    async def _phase_econ_patrimonio_inmuebles(self, case, text: str) -> str:
+        if text.strip().lower() not in ("no", "ninguno", "no tengo"):
+            case.patrimonio_inmuebles = text.strip()
+        self.cases.update(case)
+        case.phase = "econ_patrimonio_registrables"
+        return "¿Tenés vehículos u otros bienes registrables? Indicá tipo, año, dominio y modelo (ej: 'auto 2015 ABC123 Ford Fiesta'). Podés responder 'no'."
+
+    async def _phase_econ_patrimonio_registrables(self, case, text: str) -> str:
+        if text.strip().lower() not in ("no", "ninguno", "no tengo"):
+            case.patrimonio_registrables = text.strip()
+        self.cases.update(case)
+        # calcular preliminar y cerrar
+        case.phase = "econ_cierre"
+        return await self._phase_econ_cierre(case, "")
+
+    def _compute_econ_precheck(self, case):
+        import os
+        try:
+            smvm = int(os.getenv("SMVM_AMOUNT", "250000"))
+        except:
+            smvm = 250000
+        ingreso = case.ingreso_mensual_neto or 0
+        alquiler = case.alquiler_mensual or 0
+        disponible = max(0, ingreso - alquiler)
+        # Heurísticas simples
+        per_capita = disponible  # sin cargas por ahora
+        elegible = (per_capita <= 1.5 * smvm) or (ingreso <= 2.0 * smvm) or (case.vivienda_tipo == "cedida") or (case.situacion_laboral == "desocupado")
+        razones = {
+            "smvm": smvm,
+            "ingreso": ingreso,
+            "alquiler": alquiler,
+            "disponible": disponible,
+            "criterios": [
+                "per_capita <= 1.5*SMVM",
+                "ingreso <= 2*SMVM",
+                "vivienda cedida/prestada",
+                "desocupado/a",
+            ],
+        }
+        return elegible, razones
+
+    async def _phase_econ_cierre(self, case, _: str) -> str:
+        elegible, razones = self._compute_econ_precheck(case)
+        case.econ_elegible_preliminar = bool(elegible)
+        import json
+        try:
+            case.econ_razones = json.dumps(razones, ensure_ascii=False)
+        except Exception:
+            case.econ_razones = str(razones)
+        self.cases.update(case)
+        # Continuar con datos del cónyuge
+        case.phase = "apellido_conyuge"
+        self.cases.update(case)
+        status = "calificás" if elegible else "a priori no calificás"
+        aclaracion = "Esto es preliminar y puede revisarse por un operador luego de ver tu documentación."
+        # Añadir recordatorio documental según situación laboral
+        extra = ""
+        if (case.situacion_laboral or "") == "desocupado":
+            extra = "\nRecordá: Certificado Negativo de ANSES https://servicioswww.anses.gob.ar/censite/index.aspx"
+        elif (case.situacion_laboral or "") == "dependencia":
+            extra = "\nRecordá: último recibo de sueldo."
+        elif (case.situacion_laboral or "") == "autonomo":
+            extra = "\nRecordá: constancia/posición AFIP."
+        return (
+            f"Gracias. Registré tu información económica. Según lo declarado, {status} para BLSG. {aclaracion}.{extra}\n\n"
+            "Ahora necesito información sobre tu cónyuge.\n\n¿Cuál es el apellido de tu cónyuge?"
+        )
+
+    # ===== Fin PERFIL ECONÓMICO =====
+
     async def _update_session_memory(self, case):
         """Actualiza memoria de sesión con datos del caso"""
         session_data = {

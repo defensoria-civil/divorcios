@@ -159,6 +159,15 @@ def get_case(
         "domicilio": case.domicilio,
         "fecha_matrimonio": case.fecha_matrimonio.isoformat() if case.fecha_matrimonio else None,
         "lugar_matrimonio": case.lugar_matrimonio,
+        # Perfil económico (declaración jurada)
+        "situacion_laboral": case.situacion_laboral,
+        "ingreso_mensual_neto": case.ingreso_mensual_neto,
+        "vivienda_tipo": case.vivienda_tipo,
+        "alquiler_mensual": case.alquiler_mensual,
+        "patrimonio_inmuebles": case.patrimonio_inmuebles,
+        "patrimonio_registrables": case.patrimonio_registrables,
+        "econ_elegible_preliminar": case.econ_elegible_preliminar,
+        "econ_razones": case.econ_razones,
         "dni_image_url": case.dni_image_url,
         "marriage_cert_url": case.marriage_cert_url,
         "created_at": case.created_at.isoformat(),
@@ -195,7 +204,10 @@ def update_case(case_id: int, updates: dict, db: Session = Depends(get_db), _: d
         "fecha_nacimiento_conyuge", "phone_conyuge",
         "fecha_matrimonio", "lugar_matrimonio", "fecha_separacion",
         "acta_numero", "acta_libro", "acta_anio", "acta_foja", "acta_oficina",
-        "tiene_hijos", "info_hijos", "tiene_bienes", "info_bienes"
+        "tiene_hijos", "info_hijos", "tiene_bienes", "info_bienes",
+        # Perfil económico
+        "situacion_laboral", "ingreso_mensual_neto", "vivienda_tipo", "alquiler_mensual",
+        "patrimonio_inmuebles", "patrimonio_registrables", "econ_elegible_preliminar", "econ_razones"
     ]
     
     # Actualizar solo campos permitidos
@@ -246,6 +258,10 @@ def validate_case_data(case_id: int, db: Session = Depends(get_db), _: dict = De
             {"field": "nombres", "label": "Nombres", "value": case.nombres},
             {"field": "dni", "label": "DNI", "value": case.dni},
             {"field": "domicilio", "label": "Domicilio", "value": case.domicilio},
+            # Perfil económico (requerido para iniciar BLSG preliminar)
+            {"field": "situacion_laboral", "label": "Situación laboral", "value": case.situacion_laboral},
+            {"field": "vivienda_tipo", "label": "Tipo de vivienda", "value": case.vivienda_tipo},
+            # Cónyuge
             {"field": "apellido_conyuge", "label": "Apellido del cónyuge", "value": case.apellido_conyuge},
             {"field": "nombres_conyuge", "label": "Nombres del cónyuge", "value": case.nombres_conyuge},
             {"field": "dni_conyuge", "label": "DNI del cónyuge", "value": case.dni_conyuge},
@@ -276,6 +292,10 @@ def validate_case_data(case_id: int, db: Session = Depends(get_db), _: dict = De
     
     # Información opcional
     optional_info = [
+        {"field": "ingreso_mensual_neto", "label": "Ingreso mensual neto", "value": case.ingreso_mensual_neto},
+        {"field": "alquiler_mensual", "label": "Alquiler mensual", "value": case.alquiler_mensual},
+        {"field": "patrimonio_inmuebles", "label": "Patrimonio: inmuebles", "value": case.patrimonio_inmuebles},
+        {"field": "patrimonio_registrables", "label": "Patrimonio: registrables", "value": case.patrimonio_registrables},
         {"field": "tiene_hijos", "label": "¿Tiene hijos?", "value": case.tiene_hijos},
         {"field": "info_hijos", "label": "Información de hijos", "value": case.info_hijos},
         {"field": "tiene_bienes", "label": "¿Tiene bienes?", "value": case.tiene_bienes},

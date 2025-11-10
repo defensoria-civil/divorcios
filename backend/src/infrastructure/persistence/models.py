@@ -65,6 +65,16 @@ class Case(Base):
     tiene_bienes = Column(Boolean, nullable=True)
     info_bienes = Column(Text, nullable=True)
 
+    # economic profile (declaración jurada con fines de BLSG)
+    situacion_laboral = Column(String(32), nullable=True)  # desocupado | dependencia | autonomo | informal | jubilado | otro
+    ingreso_mensual_neto = Column(Integer, nullable=True)
+    vivienda_tipo = Column(String(16), nullable=True)  # propia | alquilada | cedida
+    alquiler_mensual = Column(Integer, nullable=True)
+    patrimonio_inmuebles = Column(Text, nullable=True)  # lista simple de ubicaciones
+    patrimonio_registrables = Column(Text, nullable=True)  # texto/JSON con items (tipo, año, dominio, modelo)
+    econ_elegible_preliminar = Column(Boolean, nullable=True)
+    econ_razones = Column(Text, nullable=True)
+
     messages = relationship("Message", back_populates="case", cascade="all, delete-orphan")
 
 class Message(Base):
