@@ -405,16 +405,7 @@ async def get_document_image(case_id: int, doc_type: str, db: Session = Depends(
         logger.error("document_download_error", case_id=case_id, doc_type=doc_type, error=str(e))
         raise HTTPException(status_code=500, detail=f"Error al descargar documento: {str(e)}")
 
-@router.post("/{case_id}/request-docs")
-async def request_documents(case_id: int, db: Session = Depends(get_db), _: dict = Depends(get_current_operator)):
-    """Envía al usuario por WhatsApp el pedido de documentación según su situación.
-    Se dispara manualmente por un operador desde la UI.
-    """
-    case = db.query(Case).get(case_id)
-    if not case:
-        raise HTTPException(status_code=404, detail="Caso no encontrado")
-
-    # Mensaje base
+def _build_docs_request_message(case: Case) -> str:
     parts = []
     saludo = f"Hola {case.nombres or case.nombre or ''}. Un operador de la Defensoría revisó tu solicitud."
     parts.append(saludo)
@@ -439,13 +430,34 @@ async def request_documents(case_id: int, db: Session = Depends(get_db), _: dict
         parts.append("- Último comprobante laboral/fiscal del cónyuge, según corresponda")
 
     parts.append("\nAsegurate de que las fotos sean nítidas y se lean todos los datos. Cuando termines, respondé 'LISTO'.")
+    return "\n".join(parts)
 
-    text_msg = "\n".join(parts)
+
+@router.get("/{case_id}/request-docs/preview")
+async def request_documents_preview(case_id: int, db: Session = Depends(get_db), _: dict = Depends(get_current_operator)):
+    case = db.query(Case).get(case_id)
+    if not case:
+        raise HTTPException(status_code=404, detail="Caso no encontrado")
+    text_msg = _build_docs_request_message(case)
+    return {"text": text_msg}
+
+
+@router.post("/{case_id}/request-docs")
+async def request_documents(case_id: int, body: dict | None = None, db: Session = Depends(get_db), _: dict = Depends(get_current_operator)):
+    """Envía al usuario por WhatsApp el pedido de documentación. Permite override del texto."""
+    case = db.query(Case).get(case_id)
+    if not case:
+        raise HTTPException(status_code=404, detail="Caso no encontrado")
+
+    text_override = None
+    if body and isinstance(body, dict):
+        text_override = body.get("text")
+
+    text_msg = text_override or _build_docs_request_message(case)
 
     try:
         from infrastructure.messaging.waha_service_impl import WAHAWhatsAppService
         whatsapp = WAHAWhatsAppService()
-        # Usar identificador completo guardado (ej: 549...@c.us / @lid)
         to = case.phone
         import asyncio
         asyncio.run(whatsapp.send_message(to, text_msg))
