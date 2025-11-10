@@ -419,6 +419,32 @@ export function CaseDetail() {
             </Card>
           </BlurFade>
 
+          {/* Competencia (Último domicilio conyugal) */}
+          <BlurFade delay={0.45}>
+            <Card className="p-6">
+              <h3 className="text-lg font-semibold mb-4 text-gray-900 dark:text-gray-100">Competencia</h3>
+              <div className="space-y-2 text-sm">
+                <div>
+                  <label className="block text-gray-500 dark:text-gray-400 mb-1">Último domicilio conyugal</label>
+                  <p className="text-gray-900 dark:text-gray-100">{case_.ultimo_domicilio_conyugal || '-'}</p>
+                </div>
+                <div>
+                  <label className="block text-gray-500 dark:text-gray-400 mb-1">Juzgado competente (a priori)</label>
+                  {case_.ultimo_domicilio_conyugal ? (
+                    (case_.ultimo_domicilio_conyugal.toLowerCase().includes('san rafael')) ? (
+                      <span className="px-3 py-1 inline-flex text-xs font-semibold rounded-full bg-green-100 text-green-800 dark:bg-green-900/50 dark:text-green-200">San Rafael</span>
+                    ) : (
+                      <span className="px-3 py-1 inline-flex text-xs font-semibold rounded-full bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-200">Otra jurisdicción</span>
+                    )
+                  ) : (
+                    <span className="px-3 py-1 inline-flex text-xs font-semibold rounded-full bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200">Sin datos</span>
+                  )}
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">Este indicador es orientativo y debe ser verificado por un operador.</p>
+                </div>
+              </div>
+            </Card>
+          </BlurFade>
+
           {/* Actions Card */}
           <BlurFade delay={0.5}>
             <Card className="p-6">

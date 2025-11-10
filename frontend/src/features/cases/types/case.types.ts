@@ -10,6 +10,7 @@ export interface Case {
   domicilio: string | null;
   fecha_matrimonio: string | null;
   lugar_matrimonio: string | null;
+  ultimo_domicilio_conyugal?: string | null;
   created_at: string;
   updated_at: string;
 }
