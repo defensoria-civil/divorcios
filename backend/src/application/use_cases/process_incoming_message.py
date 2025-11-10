@@ -268,7 +268,8 @@ class ProcessIncomingMessageUseCase:
             )
         
         case.domicilio = result.normalized_address or text.strip()
-        case.phase = "datos_conyuge"  # Nueva fase estructurada
+        # Pasar directamente a la fase esperada por el dispatcher
+        case.phase = "apellido_conyuge"
         case.status = "datos_personales_completos"
         self.cases.update(case)
         
