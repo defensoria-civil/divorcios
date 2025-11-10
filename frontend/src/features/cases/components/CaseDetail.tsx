@@ -15,12 +15,14 @@ import { PdfGenerationModal } from './PdfGenerationModal';
 import { DocumentsViewer } from './DocumentsViewer';
 import { EconomicProfileCard } from './EconomicProfileCard';
 import { EconomicBotReport } from './EconomicBotReport';
+import { DocRequestModal } from './DocRequestModal';
 
 export function CaseDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const caseId = parseInt(id || '0', 10);
   const [showPdfModal, setShowPdfModal] = useState(false);
+  const [showDocModal, setShowDocModal] = useState(false);
 
   const { data: case_, isLoading, error } = useQuery({
     queryKey: ['case', caseId],
@@ -470,14 +472,7 @@ export function CaseDetail() {
               <Button
                 variant="outline"
                 className="w-full justify-start"
-                onClick={async () => {
-                  try {
-                    await casesApi.requestDocs(caseId);
-                    toast.success('Pedido de documentación enviado por WhatsApp');
-                  } catch (e: any) {
-                    toast.error('No se pudo enviar el pedido de documentación');
-                  }
-                }}
+                onClick={() => setShowDocModal(true)}
               >
                 <Phone className="w-4 h-4 mr-2" />
                 Solicitar documentación por WhatsApp
@@ -527,6 +522,11 @@ export function CaseDetail() {
           caseId={caseId}
           onClose={() => setShowPdfModal(false)}
         />
+      )}
+
+      {/* Docs Request Modal */}
+      {showDocModal && (
+        <DocRequestModal caseId={caseId} onClose={() => setShowDocModal(false)} />
       )}
     </div>
   );

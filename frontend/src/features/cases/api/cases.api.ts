@@ -85,8 +85,13 @@ export const casesApi = {
   /**
    * Enviar solicitud de documentación por WhatsApp (operador)
    */
-  async requestDocs(id: number): Promise<{ sent: boolean }> {
-    const response = await apiClient.post(`/api/cases/${id}/request-docs`);
+  async getDocsRequestPreview(id: number): Promise<{ text: string }> {
+    const response = await apiClient.get(`/api/cases/${id}/request-docs/preview`);
+    return response.data;
+  },
+
+  async sendDocsRequest(id: number, text?: string): Promise<{ sent: boolean }> {
+    const response = await apiClient.post(`/api/cases/${id}/request-docs`, text ? { text } : {});
     return response.data;
   },
 
