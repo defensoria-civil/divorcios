@@ -25,6 +25,15 @@ export interface CaseDetail extends Case {
   messages: Message[];
   dni_image_url?: string | null;
   marriage_cert_url?: string | null;
+  // Perfil económico
+  situacion_laboral?: string | null;
+  ingreso_mensual_neto?: number | null;
+  vivienda_tipo?: string | null;
+  alquiler_mensual?: number | null;
+  patrimonio_inmuebles?: string | null;
+  patrimonio_registrables?: string | null;
+  econ_elegible_preliminar?: boolean | null;
+  econ_razones?: string | null;
 }
 
 export interface CaseFilters {

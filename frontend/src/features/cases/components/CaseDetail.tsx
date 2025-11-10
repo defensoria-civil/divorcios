@@ -13,6 +13,7 @@ import BlurFade from '@/shared/components/magicui/BlurFade';
 import BorderBeam from '@/shared/components/magicui/BorderBeam';
 import { PdfGenerationModal } from './PdfGenerationModal';
 import { DocumentsViewer } from './DocumentsViewer';
+import { EconomicProfileCard } from './EconomicProfileCard';
 
 export function CaseDetail() {
   const { id } = useParams<{ id: string }>();
@@ -261,6 +262,24 @@ export function CaseDetail() {
             </Card>
             </BlurFade>
           )}
+
+          {/* Economic Profile */}
+          <BlurFade delay={0.22}>
+            <EconomicProfileCard
+              caseId={caseId}
+              data={{
+                situacion_laboral: case_.situacion_laboral,
+                ingreso_mensual_neto: case_.ingreso_mensual_neto as any,
+                vivienda_tipo: case_.vivienda_tipo,
+                alquiler_mensual: case_.alquiler_mensual as any,
+                patrimonio_inmuebles: case_.patrimonio_inmuebles,
+                patrimonio_registrables: case_.patrimonio_registrables,
+                econ_elegible_preliminar: case_.econ_elegible_preliminar as any,
+                econ_razones: case_.econ_razones as any,
+                type: case_.type,
+              }}
+            />
+          </BlurFade>
 
           {/* Documents Viewer */}
           <BlurFade delay={0.25}>
