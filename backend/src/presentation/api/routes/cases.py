@@ -201,6 +201,8 @@ def update_case(case_id: int, updates: dict, db: Session = Depends(get_db), _: d
     """
     Actualiza campos específicos de un caso
     """
+    from datetime import datetime as dt
+
     case = db.query(Case).get(case_id)
     if not case:
         raise HTTPException(status_code=404, detail="Caso no encontrado")
@@ -246,12 +248,11 @@ def update_case(case_id: int, updates: dict, db: Session = Depends(get_db), _: d
             # Convertir fechas de string a date si es necesario
             if field in ["fecha_nacimiento", "fecha_matrimonio", "fecha_separacion", "fecha_nacimiento_conyuge"]:
                 if value and isinstance(value, str):
-                    from datetime import datetime
                     try:
-                        value = datetime.fromisoformat(value.replace('Z', '+00:00')).date()
+                        value = dt.fromisoformat(value.replace('Z', '+00:00')).date()
                     except:
                         try:
-                            value = datetime.strptime(value, "%Y-%m-%d").date()
+                            value = dt.strptime(value, "%Y-%m-%d").date()
                         except:
                             continue
             
@@ -259,7 +260,7 @@ def update_case(case_id: int, updates: dict, db: Session = Depends(get_db), _: d
             updated_fields.append(field)
     
     if updated_fields:
-        case.updated_at = datetime.utcnow()
+        case.updated_at = dt.utcnow()
         db.commit()
         db.refresh(case)
         logger.info("case_updated", case_id=case_id, fields=updated_fields)
@@ -403,6 +404,57 @@ async def get_document_image(case_id: int, doc_type: str, db: Session = Depends(
     except Exception as e:
         logger.error("document_download_error", case_id=case_id, doc_type=doc_type, error=str(e))
         raise HTTPException(status_code=500, detail=f"Error al descargar documento: {str(e)}")
+
+@router.post("/{case_id}/request-docs")
+async def request_documents(case_id: int, db: Session = Depends(get_db), _: dict = Depends(get_current_operator)):
+    """Envía al usuario por WhatsApp el pedido de documentación según su situación.
+    Se dispara manualmente por un operador desde la UI.
+    """
+    case = db.query(Case).get(case_id)
+    if not case:
+        raise HTTPException(status_code=404, detail="Caso no encontrado")
+
+    # Mensaje base
+    parts = []
+    saludo = f"Hola {case.nombres or case.nombre or ''}. Un operador de la Defensoría revisó tu solicitud."
+    parts.append(saludo)
+    parts.append("Para avanzar, por favor enviá por este chat fotos legibles de la siguiente documentación:")
+    parts.append("- DNI del solicitante (frente y dorso)")
+    parts.append("- Acta de matrimonio actualizada")
+
+    sit = (case.situacion_laboral or '').lower()
+    if 'desocup' in sit:
+        parts.append("- Certificado Negativo de ANSES: https://servicioswww.anses.gob.ar/censite/index.aspx")
+    elif 'dependen' in sit or 'emplead' in sit:
+        parts.append("- Último recibo de sueldo")
+    elif 'autonom' in sit or 'monotrib' in sit:
+        parts.append("- Constancia y posición fiscal de AFIP")
+    elif 'jubil' in sit or 'pension' in sit:
+        parts.append("- Último comprobante de haber jubilación/pensión")
+
+    # En divorcio conjunto, pedir también del cónyuge
+    if (case.type or '').lower() == 'conjunta':
+        parts.append("\nAdemás, del cónyuge:")
+        parts.append("- DNI del cónyuge (frente y dorso)")
+        parts.append("- Último comprobante laboral/fiscal del cónyuge, según corresponda")
+
+    parts.append("\nAsegurate de que las fotos sean nítidas y se lean todos los datos. Cuando termines, respondé 'LISTO'.")
+
+    text_msg = "\n".join(parts)
+
+    try:
+        from infrastructure.messaging.waha_service_impl import WAHAWhatsAppService
+        whatsapp = WAHAWhatsAppService()
+        # Usar identificador completo guardado (ej: 549...@c.us / @lid)
+        to = case.phone
+        import asyncio
+        asyncio.run(whatsapp.send_message(to, text_msg))
+        logger.info("docs_request_sent", case_id=case_id)
+        return {"sent": True}
+    except Exception as e:
+        logger.error("docs_request_failed", case_id=case_id, error=str(e))
+        raise HTTPException(status_code=500, detail=f"No se pudo enviar el pedido de documentación: {str(e)}")
+
 
 @router.get("/{case_id}/petition.pdf")
 def download_petition(case_id: int, db: Session = Depends(get_db), _: dict = Depends(get_current_operator)):

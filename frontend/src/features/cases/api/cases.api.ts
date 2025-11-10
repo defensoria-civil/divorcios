@@ -83,6 +83,14 @@ export const casesApi = {
   },
 
   /**
+   * Enviar solicitud de documentación por WhatsApp (operador)
+   */
+  async requestDocs(id: number): Promise<{ sent: boolean }> {
+    const response = await apiClient.post(`/api/cases/${id}/request-docs`);
+    return response.data;
+  },
+
+  /**
    * Descarga PDF de demanda de divorcio
    */
   async downloadPetition(id: number): Promise<Blob> {

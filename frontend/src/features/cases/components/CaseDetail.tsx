@@ -466,6 +466,23 @@ export function CaseDetail() {
                 <Phone className="w-4 h-4 mr-2" />
                 Contactar por WhatsApp
               </Button>
+
+              <Button
+                variant="outline"
+                className="w-full justify-start"
+                onClick={async () => {
+                  try {
+                    await casesApi.requestDocs(caseId);
+                    toast.success('Pedido de documentación enviado por WhatsApp');
+                  } catch (e: any) {
+                    toast.error('No se pudo enviar el pedido de documentación');
+                  }
+                }}
+              >
+                <Phone className="w-4 h-4 mr-2" />
+                Solicitar documentación por WhatsApp
+              </Button>
+
               <div className="text-xs text-gray-500 dark:text-gray-400 pl-2">
                 Número: {case_.phone.split('@')[0]}
               </div>
