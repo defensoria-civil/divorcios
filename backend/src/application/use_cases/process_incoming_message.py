@@ -21,6 +21,7 @@ class IncomingMessageRequest:
     phone: str
     text: str
     media_id: Optional[str] = None
+    mime_type: Optional[str] = None
 
 @dataclass
 class MessageResponse:
@@ -53,6 +54,7 @@ class ProcessIncomingMessageUseCase:
         phone = request.phone
         text = request.text
         media_id = request.media_id
+        mime_type = request.mime_type
         
         # 1. Obtener o crear caso
         case = self.cases.get_or_create_by_phone(phone)
@@ -61,7 +63,7 @@ class ProcessIncomingMessageUseCase:
         
         # 2. Si hay media, procesar imagen
         if media_id:
-            return await self._handle_media(case, media_id)
+            return await self._handle_media(case, media_id, mime_type)
         
         # 3. Almacenar mensaje del usuario en DB y memoria
         self.messages.add_message(case.id, "user", text)
@@ -442,8 +444,6 @@ class ProcessIncomingMessageUseCase:
             f"¡Perfecto! Ya anoté que se casaron el {fecha_str} en {case.lugar_matrimonio}.\n\n"
             "Para determinar el juzgado competente necesito el último domicilio conyugal. "
             "Indicá dirección completa (calle y número, ciudad y provincia)."
-            "Solo se incluyen: (a) menores de 18; (b) de 18 a 25 que estudian y no son económicamente independientes; o (c) de cualquier edad con CUD.\n\n"
-            "¿Tienen hijos en común con estas características? Si no, respondé 'no'."
         )
     
     async def _phase_ultimo_domicilio_conyugal(self, case, text: str) -> str:
@@ -676,7 +676,27 @@ class ProcessIncomingMessageUseCase:
     
     async def _phase_documentacion(self, case, text: str) -> str:
         """Fase: documentación y consultas generales"""
-        # Usar LLM con contexto para responder consultas
+        low = text.lower()
+        if any(k in low for k in ["document", "documentacion", "papeles", "enviar", "entregar", "subir", "cargar", "foto"]):
+            # En fase de documentación, habilitar envío e indicar requisitos resumidos
+            parts = [
+                "Podés enviar la documentación por este chat (WhatsApp).",
+                "Mandá fotos nítidas donde se lean todos los datos:",
+                "- DNI del solicitante (frente y dorso)",
+                "- Acta de matrimonio actualizada",
+            ]
+            sit = (case.situacion_laboral or '').lower()
+            if 'dependen' in sit or 'emplead' in sit:
+                parts.append("- Último recibo de sueldo")
+            elif 'autonom' in sit or 'monotrib' in sit:
+                parts.append("- Constancia/posición AFIP")
+            elif 'desocup' in sit:
+                parts.append("- Certificado Negativo ANSES")
+            elif 'jubil' in sit or 'pension' in sit:
+                parts.append("- Último comprobante de haber jubilación/pensión")
+            parts.append("Cuando termines, respondé 'LISTO'.")
+            return "\n".join(parts)
+        # Usar LLM con contexto para otras consultas
         return await self._llm_fallback(case, text)
     
     async def _llm_fallback(self, case, text: str) -> str:
@@ -841,18 +861,10 @@ Respuesta:"""
         # Continuar con datos del cónyuge
         case.phase = "apellido_conyuge"
         self.cases.update(case)
-        status = "calificás" if elegible else "a priori no calificás"
-        aclaracion = "Esto es preliminar y puede revisarse por un operador luego de ver tu documentación."
-        # Añadir recordatorio documental según situación laboral
-        extra = ""
-        if (case.situacion_laboral or "") == "desocupado":
-            extra = "\nRecordá: Certificado Negativo de ANSES https://servicioswww.anses.gob.ar/censite/index.aspx"
-        elif (case.situacion_laboral or "") == "dependencia":
-            extra = "\nRecordá: último recibo de sueldo."
-        elif (case.situacion_laboral or "") == "autonomo":
-            extra = "\nRecordá: constancia/posición AFIP."
+        # Nota: no comunicar veredicto al usuario. Solo informar registro y revisión humana.
         return (
-            f"Gracias. Registré tu información económica. Según lo declarado, {status} para BLSG. {aclaracion}.{extra}\n\n"
+            "Gracias. Registré tu información económica (declaración jurada). "
+            "Un operador de la Defensoría la va a revisar y, si corresponde, te pedirá la documentación por este chat.\n\n"
             "Ahora necesito información sobre tu cónyuge.\n\n¿Cuál es el apellido de tu cónyuge?"
         )
 
@@ -878,13 +890,40 @@ Respuesta:"""
             if value is not None and value != "":
                 await self.memory.store_session_memory(case.id, key, value)
     
-    async def _handle_media(self, case, media_id: str) -> MessageResponse:
+    async def _handle_media(self, case, media_id: str, mime_type: Optional[str]) -> MessageResponse:
         """Procesa imagen enviada por el usuario (DNI o acta de matrimonio)"""
         
         try:
             # 1. Descargar imagen desde WhatsApp
             logger.info("downloading_media", case_id=case.id, media_id=media_id)
             image_bytes = await self.whatsapp.download_media(media_id)
+            
+            # Si es PDF u otro no-imagen, solo almacenar referencia y confirmar recepción
+            if mime_type and not mime_type.startswith('image/'):
+                stored = False
+                if case.phase == "documentacion":
+                    if not case.dni_image_url:
+                        case.dni_image_url = media_id
+                        stored = True
+                    else:
+                        case.marriage_cert_url = media_id
+                        stored = True
+                else:
+                    if not case.dni_image_url:
+                        case.dni_image_url = media_id
+                        stored = True
+                    elif not case.marriage_cert_url:
+                        case.marriage_cert_url = media_id
+                        stored = True
+                if stored:
+                    self.cases.update(case)
+                    await self.memory.store_immediate_memory(case.id, "Usuario envió documento (no imagen). Guardado para revisión.")
+                return MessageResponse(
+                    text=(
+                        "Recibí tu archivo. Un operador lo va a revisar para confirmar que se lea bien. "
+                        "Si podés, enviá también fotos nítidas (frente y dorso)."
+                    )
+                )
             
             # 2. Determinar tipo de documento según fase del caso
             if case.phase == "documentacion":

@@ -57,11 +57,11 @@ async def whatsapp_webhook(payload: WhatsAppInbound, request: Request, db: Sessi
     
     # NUEVO: Detectar si hay media adjunto (imagen)
     media_id = None
-    if msg.type == 'image' and msg.mediaId:
+    if msg.type in ('image', 'document') and msg.mediaId:
         media_id = msg.mediaId
-        logger.info("image_received", phone=phone, media_id=media_id)
+        logger.info("media_received", phone=phone, media_id=media_id, type=msg.type, mime=msg.mimeType)
     
-    # Validar que tengamos contenido (texto o imagen)
+    # Validar que tengamos contenido (texto o imagen/documento)
     if not text.strip() and not media_id:
         return {"received": True, "status": "empty_message"}
     
@@ -70,7 +70,8 @@ async def whatsapp_webhook(payload: WhatsAppInbound, request: Request, db: Sessi
     request = IncomingMessageRequest(
         phone=phone, 
         text=text,
-        media_id=media_id  # Pasar media_id al use case
+        media_id=media_id,
+        mime_type=msg.mimeType
     )
     
     try:

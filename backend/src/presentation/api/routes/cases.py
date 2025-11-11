@@ -395,10 +395,13 @@ async def get_document_image(case_id: int, doc_type: str, db: Session = Depends(
         whatsapp = WAHAWhatsAppService()
         image_bytes = await whatsapp.download_media(media_id)
         
-        # Detectar mimetype (generalmente JPG o PNG)
+        # Detectar mimetype (imagen o PDF)
         import imghdr
-        image_type = imghdr.what(None, h=image_bytes)
-        mimetype = f"image/{image_type}" if image_type else "image/jpeg"
+        if image_bytes[:4] == b"%PDF":
+            mimetype = "application/pdf"
+        else:
+            image_type = imghdr.what(None, h=image_bytes)
+            mimetype = f"image/{image_type}" if image_type else "image/jpeg"
         
         return Response(content=image_bytes, media_type=mimetype)
     except Exception as e:

@@ -107,8 +107,6 @@ function ImageModal({ imageUrl, title, onClose }: ImageModalProps) {
 }
 
 export function DocumentsViewer({ caseId, dniImageUrl, marriageCertUrl }: DocumentsViewerProps) {
-  const [selectedImage, setSelectedImage] = useState<{ url: string; title: string } | null>(null);
-
   const hasDni = !!dniImageUrl;
   const hasMarriageCert = !!marriageCertUrl;
   const hasDocuments = hasDni || hasMarriageCert;
@@ -129,100 +127,60 @@ export function DocumentsViewer({ caseId, dniImageUrl, marriageCertUrl }: Docume
     );
   }
 
+  const openDoc = (doc: 'dni' | 'marriage_cert') => {
+    const url = casesApi.getDocumentUrl(caseId, doc);
+    window.open(url, '_blank');
+  };
+
+  const downloadDoc = async (doc: 'dni' | 'marriage_cert') => {
+    try {
+      const url = casesApi.getDocumentUrl(caseId, doc);
+      const res = await fetch(url);
+      const blob = await res.blob();
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `${doc}.file`;
+      document.body.appendChild(a);
+      a.click();
+      URL.revokeObjectURL(a.href);
+      document.body.removeChild(a);
+    } catch (e) {
+      toast.error('No se pudo descargar el documento');
+    }
+  };
+
   return (
-    <>
-      <Card className="p-6">
-        <h3 className="text-lg font-semibold mb-4 text-gray-900 dark:text-gray-100 flex items-center gap-2">
-          <FileText className="w-5 h-5" />
-          Documentación Cargada
-        </h3>
-        
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {/* DNI */}
-          {hasDni && (
-            <div className="group relative">
-              <div className="aspect-video bg-gray-100 dark:bg-gray-800 rounded-lg overflow-hidden border-2 border-gray-200 dark:border-gray-700 hover:border-blue-500 dark:hover:border-blue-500 transition-colors cursor-pointer">
-                <img
-                  src={casesApi.getDocumentUrl(caseId, 'dni')}
-                  alt="DNI"
-                  className="w-full h-full object-cover"
-                  onClick={() => setSelectedImage({
-                    url: casesApi.getDocumentUrl(caseId, 'dni'),
-                    title: 'DNI'
-                  })}
-                />
-                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-colors flex items-center justify-center">
-                  <Button
-                    variant="outline"
-                    className="opacity-0 group-hover:opacity-100 transition-opacity bg-white dark:bg-gray-900"
-                    onClick={() => setSelectedImage({
-                      url: casesApi.getDocumentUrl(caseId, 'dni'),
-                      title: 'DNI'
-                    })}
-                  >
-                    <ImageIcon className="w-4 h-4 mr-2" />
-                    Ver DNI
-                  </Button>
-                </div>
-              </div>
-              <p className="mt-2 text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center gap-2">
-                <FileText className="w-4 h-4" />
-                Documento Nacional de Identidad
-              </p>
+    <Card className="p-6">
+      <h3 className="text-lg font-semibold mb-4 text-gray-900 dark:text-gray-100 flex items-center gap-2">
+        <FileText className="w-5 h-5" />
+        Documentación Cargada
+      </h3>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {hasDni && (
+          <div className="p-4 border rounded-lg bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700">
+            <p className="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center gap-2">
+              <FileText className="w-4 h-4" /> DNI del solicitante
+            </p>
+            <div className="mt-3 flex gap-2">
+              <Button variant="outline" onClick={() => openDoc('dni')}>Abrir</Button>
+              <Button variant="outline" onClick={() => downloadDoc('dni')}><Download className="w-4 h-4 mr-1"/>Descargar</Button>
             </div>
-          )}
+          </div>
+        )}
 
-          {/* Acta de Matrimonio */}
-          {hasMarriageCert && (
-            <div className="group relative">
-              <div className="aspect-video bg-gray-100 dark:bg-gray-800 rounded-lg overflow-hidden border-2 border-gray-200 dark:border-gray-700 hover:border-blue-500 dark:hover:border-blue-500 transition-colors cursor-pointer">
-                <img
-                  src={casesApi.getDocumentUrl(caseId, 'marriage_cert')}
-                  alt="Acta de Matrimonio"
-                  className="w-full h-full object-cover"
-                  onClick={() => setSelectedImage({
-                    url: casesApi.getDocumentUrl(caseId, 'marriage_cert'),
-                    title: 'Acta de Matrimonio'
-                  })}
-                />
-                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-colors flex items-center justify-center">
-                  <Button
-                    variant="outline"
-                    className="opacity-0 group-hover:opacity-100 transition-opacity bg-white dark:bg-gray-900"
-                    onClick={() => setSelectedImage({
-                      url: casesApi.getDocumentUrl(caseId, 'marriage_cert'),
-                      title: 'Acta de Matrimonio'
-                    })}
-                  >
-                    <ImageIcon className="w-4 h-4 mr-2" />
-                    Ver Acta
-                  </Button>
-                </div>
-              </div>
-              <p className="mt-2 text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center gap-2">
-                <FileText className="w-4 h-4" />
-                Acta de Matrimonio
-              </p>
+        {hasMarriageCert && (
+          <div className="p-4 border rounded-lg bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700">
+            <p className="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center gap-2">
+              <FileText className="w-4 h-4" /> Acta de Matrimonio
+            </p>
+            <div className="mt-3 flex gap-2">
+              <Button variant="outline" onClick={() => openDoc('marriage_cert')}>Abrir</Button>
+              <Button variant="outline" onClick={() => downloadDoc('marriage_cert')}><Download className="w-4 h-4 mr-1"/>Descargar</Button>
             </div>
-          )}
-        </div>
-
-        {/* Info adicional */}
-        <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
-          <p className="text-sm text-blue-700 dark:text-blue-300">
-            💡 <strong>Tip:</strong> Hacé clic en cualquier imagen para verla en tamaño completo con zoom.
-          </p>
-        </div>
-      </Card>
-
-      {/* Image Modal */}
-      {selectedImage && (
-        <ImageModal
-          imageUrl={selectedImage.url}
-          title={selectedImage.title}
-          onClose={() => setSelectedImage(null)}
-        />
-      )}
-    </>
+          </div>
+        )}
+      </div>
+    </Card>
   );
 }
