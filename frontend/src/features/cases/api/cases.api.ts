@@ -96,6 +96,14 @@ export const casesApi = {
   },
 
   /**
+   * Enviar mensaje libre por WhatsApp (operador)
+   */
+  async sendOperatorMessage(id: number, text: string): Promise<{ sent: boolean }> {
+    const response = await apiClient.post(`/api/cases/${id}/send-message`, { text });
+    return response.data;
+  },
+
+  /**
    * Descarga PDF de demanda de divorcio
    */
   async downloadPetition(id: number): Promise<Blob> {

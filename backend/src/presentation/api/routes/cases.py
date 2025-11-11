@@ -444,7 +444,12 @@ async def request_documents_preview(case_id: int, db: Session = Depends(get_db),
 
 @router.post("/{case_id}/request-docs")
 async def request_documents(case_id: int, body: dict | None = None, db: Session = Depends(get_db), _: dict = Depends(get_current_operator)):
-    """Envía al usuario por WhatsApp el pedido de documentación. Permite override del texto."""
+    """Envía al usuario por WhatsApp el pedido de documentación. Permite override del texto.
+    Además: registra el mensaje del operador en la conversación y ajusta la fase a 'documentacion'.
+    """
+    from infrastructure.persistence.repositories import MessageRepository
+    from application.services.memory_service import MemoryService
+
     case = db.query(Case).get(case_id)
     if not case:
         raise HTTPException(status_code=404, detail="Caso no encontrado")
@@ -459,8 +464,20 @@ async def request_documents(case_id: int, body: dict | None = None, db: Session 
         from infrastructure.messaging.waha_service_impl import WAHAWhatsAppService
         whatsapp = WAHAWhatsAppService()
         to = case.phone
-        import asyncio
-        asyncio.run(whatsapp.send_message(to, text_msg))
+        # En endpoints async, usar await en lugar de asyncio.run()
+        await whatsapp.send_message(to, text_msg)
+
+        # Guardar en historial y memoria para que el bot tenga contexto
+        MessageRepository(db).add_message(case.id, "operator", text_msg)
+        memory = MemoryService(db)
+        await memory.store_immediate_memory(case.id, f"Operador: {text_msg}")
+
+        # Ajustar fase a 'documentacion'
+        if case.phase != "documentacion":
+            case.phase = "documentacion"
+            db.add(case)
+            db.commit()
+
         logger.info("docs_request_sent", case_id=case_id)
         return {"sent": True}
     except Exception as e:
@@ -529,3 +546,38 @@ def download_petition(case_id: int, db: Session = Depends(get_db), _: dict = Dep
     
     pdf = TemplatePDFService().generate_divorce_petition_pdf(case_data)
     return Response(content=pdf, media_type="application/pdf")
+
+
+@router.post("/{case_id}/send-message")
+async def operator_send_message(case_id: int, body: dict, db: Session = Depends(get_db), _: dict = Depends(get_current_operator)):
+    """Permite al operador enviar un mensaje libre por WhatsApp.
+    También registra el mensaje en el historial y memoria inmediata.
+    Body: {"text": str}
+    """
+    from infrastructure.persistence.repositories import MessageRepository
+    from application.services.memory_service import MemoryService
+    
+    if not isinstance(body, dict) or not body.get("text"):
+        raise HTTPException(status_code=400, detail="Falta el campo 'text'")
+    
+    case = db.query(Case).get(case_id)
+    if not case:
+        raise HTTPException(status_code=404, detail="Caso no encontrado")
+    
+    text_msg = str(body["text"]).strip()
+    if not text_msg:
+        raise HTTPException(status_code=400, detail="El mensaje está vacío")
+    
+    try:
+        from infrastructure.messaging.waha_service_impl import WAHAWhatsAppService
+        whatsapp = WAHAWhatsAppService()
+        await whatsapp.send_message(case.phone, text_msg)
+        # registrar historial y memoria
+        MessageRepository(db).add_message(case.id, "operator", text_msg)
+        memory = MemoryService(db)
+        await memory.store_immediate_memory(case.id, f"Operador: {text_msg}")
+        logger.info("operator_message_sent", case_id=case_id)
+        return {"sent": True}
+    except Exception as e:
+        logger.error("operator_message_failed", case_id=case_id, error=str(e))
+        raise HTTPException(status_code=500, detail=f"No se pudo enviar el mensaje: {str(e)}")

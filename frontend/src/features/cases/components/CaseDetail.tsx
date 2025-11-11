@@ -23,6 +23,7 @@ export function CaseDetail() {
   const caseId = parseInt(id || '0', 10);
   const [showPdfModal, setShowPdfModal] = useState(false);
   const [showDocModal, setShowDocModal] = useState(false);
+  const [opMsg, setOpMsg] = useState('');
 
   const { data: case_, isLoading, error } = useQuery({
     queryKey: ['case', caseId],
@@ -40,31 +41,33 @@ export function CaseDetail() {
       return;
     }
 
-    // Extraer número del formato WhatsApp (ej: 261082623000696@lid -> 261082623000696)
-    let phoneNumber = case_.phone.split('@')[0];
-    
-    // Limpiar el número: eliminar espacios, guiones, paréntesis
-    phoneNumber = phoneNumber.replace(/[\s\-\(\)]/g, '');
-    
-    // Si el número no empieza con +, agregarlo
-    if (!phoneNumber.startsWith('+')) {
-      phoneNumber = '+' + phoneNumber;
+    const raw = String(case_.phone);
+    const digits = raw.split('@')[0].replace(/\D/g, '');
+    const isLidLike = raw.includes('@lid') || (digits.length >= 15 && !digits.startsWith('54'));
+
+    if (isLidLike) {
+      toast.error('Este contacto está registrado con un ID interno de WhatsApp. Usá “Solicitar documentación por WhatsApp” para escribirle desde el sistema.');
+      return;
     }
-    
-    // Mensaje predeterminado
+
+    // Normalización básica para Argentina
+    let msisdn = digits;
+    if (msisdn.startsWith('54') && !msisdn.startsWith('549')) {
+      msisdn = msisdn.replace(/^54/, '549');
+    } else if (!msisdn.startsWith('54')) {
+      if (msisdn.length === 10) msisdn = '549' + msisdn; else msisdn = '549' + msisdn;
+    }
+
     const message = encodeURIComponent(
       `Hola ${case_.nombre || 'estimado/a'},\n\nSoy del equipo de la Defensoría Civil de San Rafael.\n\nMe comunico respecto a tu trámite de divorcio (Caso #${case_.id}).\n\n¿En qué puedo ayudarte?`
     );
 
-    // Abrir WhatsApp
-    const whatsappUrl = `https://wa.me/${phoneNumber}?text=${message}`;
-    
+    const whatsappUrl = `https://wa.me/${msisdn}?text=${message}`;
     console.log('Opening WhatsApp with:', whatsappUrl);
-    console.log('Phone number extracted:', phoneNumber);
+    console.log('Phone number extracted:', msisdn);
     console.log('Original phone field:', case_.phone);
-    
+
     window.open(whatsappUrl, '_blank');
-    
     toast.success('Abriendo WhatsApp...');
   };
 
@@ -480,6 +483,36 @@ export function CaseDetail() {
 
               <div className="text-xs text-gray-500 dark:text-gray-400 pl-2">
                 Número: {case_.phone.split('@')[0]}
+              </div>
+
+              {/* Enviar mensaje libre */}
+              <div className="mt-4">
+                <label className="block text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">
+                  Enviar mensaje por WhatsApp (operador)
+                </label>
+                <textarea
+                  className="w-full h-28 p-3 border border-gray-300 dark:border-gray-700 rounded bg-white dark:bg-gray-900 text-sm"
+                  placeholder="Escribí tu mensaje para el usuario..."
+                  value={opMsg}
+                  onChange={(e) => setOpMsg(e.target.value)}
+                />
+                <div className="flex justify-end mt-2">
+                  <Button
+                    onClick={async () => {
+                      const text = opMsg.trim();
+                      if (!text) return toast.error('Escribí un mensaje');
+                      try {
+                        await casesApi.sendOperatorMessage(caseId, text);
+                        toast.success('Mensaje enviado');
+                        setOpMsg('');
+                      } catch {
+                        toast.error('No se pudo enviar el mensaje');
+                      }
+                    }}
+                  >
+                    Enviar
+                  </Button>
+                </div>
               </div>
             </div>
             </Card>
