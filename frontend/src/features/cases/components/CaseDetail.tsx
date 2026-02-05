@@ -323,7 +323,9 @@ export function CaseDetail() {
             <DocumentsViewer
               caseId={caseId}
               dniImageUrl={case_.dni_image_url}
+              dniBackUrl={case_.dni_back_url}
               marriageCertUrl={case_.marriage_cert_url}
+              supportDocuments={case_.support_documents as any}
             />
           </BlurFade>
 

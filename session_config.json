@@ -1,0 +1,16 @@
+{
+    "name": "default",
+    "config": {
+        "webhooks": [
+            {
+                "url": "http://host.docker.internal:8000/webhook/whatsapp",
+                "events": [
+                    "message"
+                ],
+                "hmac": null,
+                "retries": null,
+                "customHeaders": null
+            }
+        ]
+    }
+}

@@ -7,7 +7,8 @@ class WhatsAppMessage(BaseModel):
     chatId: Optional[str] = None
     body: Optional[str] = None
     type: Optional[str] = None  # 'text', 'image', 'video', 'document', etc.
-    timestamp: Optional[int] = None
+    # WAHA suele enviar timestamps como strings ISO o enteros; aceptamos ambos como str.
+    timestamp: Optional[str] = None
     
     # Campos de media
     mediaId: Optional[str] = None  # ID del archivo multimedia

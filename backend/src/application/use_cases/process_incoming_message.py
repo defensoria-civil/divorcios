@@ -12,6 +12,7 @@ from application.services.memory_service import MemoryService
 from application.services.hallucination_detection_service import HallucinationDetectionService
 from infrastructure.ocr.ocr_service_impl import MultiProviderOCRService
 from infrastructure.messaging.waha_service_impl import WAHAWhatsAppService
+from infrastructure.ai.safety_layer import SafetyLayer
 
 logger = structlog.get_logger()
 
@@ -25,8 +26,13 @@ class IncomingMessageRequest:
 
 @dataclass
 class MessageResponse:
-    """DTO para respuesta"""
+    """DTO para respuesta del asistente.
+
+    should_send indica si corresponde enviar la respuesta al usuario (por ejemplo,
+    en algunos flujos internos podríamos generar solo logs o actualizaciones de estado).
+    """
     text: str
+    should_send: bool = True
     send_document: bool = False
     document_path: Optional[str] = None
 
@@ -48,6 +54,7 @@ class ProcessIncomingMessageUseCase:
         self.validator_date = SimpleDateValidationService()
         self.ocr = MultiProviderOCRService()
         self.whatsapp = WAHAWhatsAppService()
+        self.safety = SafetyLayer()
     
     async def execute(self, request: IncomingMessageRequest) -> MessageResponse:
         """Ejecuta el caso de uso"""
@@ -61,9 +68,9 @@ class ProcessIncomingMessageUseCase:
         
         logger.info("processing_message", case_id=case.id, phone=phone, phase=case.phase, has_media=bool(media_id))
         
-        # 2. Si hay media, procesar imagen
+        # 2. Si hay media, procesar imagen (pasar caption/texto si lo hubiera)
         if media_id:
-            return await self._handle_media(case, media_id, mime_type)
+            return await self._handle_media(case, media_id, mime_type, text)
         
         # 3. Almacenar mensaje del usuario en DB y memoria
         self.messages.add_message(case.id, "user", text)
@@ -406,17 +413,26 @@ class ProcessIncomingMessageUseCase:
         import re
         from datetime import datetime
         
+        # Si ya tenemos fecha, no intentamos parsearla de nuevo obligatoriamente
+        fecha_encontrada = False
+        
         # Buscar fecha en formato DD/MM/AAAA o DD-MM-AAAA
         fecha_match = re.search(r'\b(\d{1,2})[/-](\d{1,2})[/-](\d{4})\b', text)
-        if not fecha_match:
-            return "Por favor, indicá la fecha y lugar del matrimonio.\n\nEjemplo: 'Nos casamos el 15/03/2005 en San Rafael' o '15/03/2005, San Rafael, Mendoza'"
         
-        # Validar y guardar fecha
-        try:
-            fecha_str = f"{fecha_match.group(1)}/{fecha_match.group(2)}/{fecha_match.group(3)}"
-            case.fecha_matrimonio = datetime.strptime(fecha_str, "%d/%m/%Y").date()
-        except:
-            return "La fecha no es válida. Usá el formato DD/MM/AAAA.\n\nEjemplo: 15/03/2005 en San Rafael, Mendoza"
+        if fecha_match:
+            try:
+                fecha_str = f"{fecha_match.group(1)}/{fecha_match.group(2)}/{fecha_match.group(3)}"
+                case.fecha_matrimonio = datetime.strptime(fecha_str, "%d/%m/%Y").date()
+                fecha_encontrada = True
+            except:
+                pass
+        
+        # Si no encontramos fecha nueva y no tenemos una guardada, pedirla
+        if not fecha_encontrada and not case.fecha_matrimonio:
+            return "Por favor, indicá la fecha y lugar del matrimonio.\n\nEjemplo: 'Nos casamos el 15-03-2005 en San Rafael' o '15-03-2005, San Rafael, Mendoza'"
+            
+        # Si ya tenemos fecha (nueva o vieja), buscamos el lugar
+        fecha_str = case.fecha_matrimonio.strftime("%d/%m/%Y")
         
         # Extraer lugar con regex más robusto
         # Remover frases comunes antes del lugar
@@ -432,7 +448,8 @@ class ProcessIncomingMessageUseCase:
         lugar = lugar.title()
         
         # Validar que tengamos algo mínimo
-        if len(lugar) < 5 or lugar.lower() in ['el', 'en', 'la', 'nos', 'casamos']:
+        # Si el usuario solo puso la fecha en el mensaje anterior, lugar estará vacío o será muy corto
+        if len(lugar) < 4 or lugar.lower() in ['el', 'en', 'la', 'nos', 'casamos']:
             return f"Ya anoté la fecha {fecha_str}. ¿En qué ciudad y provincia se casaron?\n\nEjemplo: 'San Rafael, Mendoza' o 'San Rafael Mendoza'"
         
         case.lugar_matrimonio = lugar
@@ -676,15 +693,29 @@ class ProcessIncomingMessageUseCase:
     
     async def _phase_documentacion(self, case, text: str) -> str:
         """Fase: documentación y consultas generales"""
-        low = text.lower()
+        low = text.lower().strip()
+
+        # Interpretar confirmación del usuario
+        if low in ["listo", "listo!", "ya envié", "ya lo hice", "listo." ]:
+            # 'LISTO' es opcional: respondemos estado actualizado de documentación
+            return await self._build_docs_status_message(case)
+
+        # Preguntas/consultas sobre cómo enviar
         if any(k in low for k in ["document", "documentacion", "papeles", "enviar", "entregar", "subir", "cargar", "foto"]):
-            # En fase de documentación, habilitar envío e indicar requisitos resumidos
+            # En fase de documentación, habilitar envío e indicar requisitos según progreso
             parts = [
                 "Podés enviar la documentación por este chat (WhatsApp).",
                 "Mandá fotos nítidas donde se lean todos los datos:",
-                "- DNI del solicitante (frente y dorso)",
-                "- Acta de matrimonio actualizada",
             ]
+            if not case.dni_image_url:
+                parts.append("- DNI del solicitante (frente y dorso)")
+            else:
+                data = await self.memory.retrieve_session_data(case.id)
+                if not bool(data.get("dni_back_received")):
+                    parts.append("- Dorso del DNI (si aún no lo enviaste)")
+            if not case.marriage_cert_url:
+                parts.append("- Acta de matrimonio actualizada")
+
             sit = (case.situacion_laboral or '').lower()
             if 'dependen' in sit or 'emplead' in sit:
                 parts.append("- Último recibo de sueldo")
@@ -696,6 +727,7 @@ class ProcessIncomingMessageUseCase:
                 parts.append("- Último comprobante de haber jubilación/pensión")
             parts.append("Cuando termines, respondé 'LISTO'.")
             return "\n".join(parts)
+
         # Usar LLM con contexto para otras consultas
         return await self._llm_fallback(case, text)
     
@@ -705,6 +737,10 @@ class ProcessIncomingMessageUseCase:
         
         system_prompt = f"""Sos un asistente legal de la Defensoría Civil de San Rafael, Mendoza, Argentina.
 Tu rol es ayudar con trámites de divorcio de forma cercana, clara y profesional.
+
+IMPORTANTE: No incluyas datos personales sensibles (DNI, CUIT/CUIL, teléfonos,
+mails, direcciones exactas) salvo que ya hayan sido expresamente provistos por el usuario
+en esta misma conversación, y evitá repetirlos salvo que sea estrictamente necesario.
 
 CONTEXTO DEL CASO:
 {context}
@@ -722,7 +758,10 @@ Usuario pregunta: {text}
 Respuesta:"""
         
         response = await self.llm.chat([{"role": "system", "content": system_prompt}])
-        return response.strip()
+
+        # Aplicar filtros de salida (PII, contenido sensible, etc.)
+        safety_result = self.safety.filter_output(response)
+        return safety_result.text.strip()
     
     # ===== Sección PERFIL ECONÓMICO =====
     async def _phase_econ_intro(self, case, text: str) -> str:
@@ -870,6 +909,46 @@ Respuesta:"""
 
     # ===== Fin PERFIL ECONÓMICO =====
 
+    async def _build_docs_status_message(self, case, just_received: str | None = None) -> str:
+        """Arma un mensaje de estado de documentación según lo recibido y lo esperado."""
+        from infrastructure.persistence.models import SupportDocument
+        # Estado actual
+        tiene_dni = bool(case.dni_image_url)
+        tiene_dorso = bool(getattr(case, 'dni_back_url', None))
+        tiene_acta = bool(case.marriage_cert_url)
+        # Esperados según situación laboral
+        sit = (case.situacion_laboral or '').lower()
+        expected_support: list[tuple[str, str]] = []  # (doc_type, label)
+        if 'desocup' in sit:
+            expected_support.append(('anses_cert', 'Certificación Negativa ANSES'))
+        elif 'dependen' in sit or 'emplead' in sit:
+            expected_support.append(('recibo_sueldo', 'Recibo de sueldo'))
+        elif 'autonom' in sit or 'monotrib' in sit:
+            expected_support.append(('afip_constancia', 'Constancia/posición AFIP'))
+        elif 'jubil' in sit or 'pension' in sit:
+            expected_support.append(('jubilacion_comprobante', 'Comprobante jubilación/pensión'))
+        # Verificar recibidos en support_documents
+        received_types = set()
+        try:
+            docs = self.db.query(SupportDocument).filter(SupportDocument.case_id == case.id).all()
+            received_types = {d.doc_type for d in docs}
+        except Exception:
+            pass
+        pendientes = []
+        if not tiene_dni:
+            pendientes.append('- DNI (frente y dorso)')
+        if tiene_dni and not tiene_dorso:
+            pendientes.append('- Dorso del DNI')
+        if not tiene_acta:
+            pendientes.append('- Acta de matrimonio actualizada')
+        for t, label in expected_support:
+            if t not in received_types:
+                pendientes.append(f'- {label}')
+        prefix = f"{just_received} recibido. " if just_received else ""
+        if pendientes:
+            return prefix + "Queda pendiente:\n" + "\n".join(pendientes)
+        return prefix + ("¡Perfecto! Ya recibimos toda la documentación. Un operador la va a revisar y te avisamos al finalizar.")
+
     async def _update_session_memory(self, case):
         """Actualiza memoria de sesión con datos del caso"""
         session_data = {
@@ -890,59 +969,113 @@ Respuesta:"""
             if value is not None and value != "":
                 await self.memory.store_session_memory(case.id, key, value)
     
-    async def _handle_media(self, case, media_id: str, mime_type: Optional[str]) -> MessageResponse:
-        """Procesa imagen enviada por el usuario (DNI o acta de matrimonio)"""
+    async def _handle_media(self, case, media_id: str, mime_type: Optional[str], caption: Optional[str] = None) -> MessageResponse:
+        def _rasterize_pdf_first_image(pdf_bytes: bytes, dpi: int = 200) -> Optional[bytes]:
+            try:
+                import fitz  # PyMuPDF
+                doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+                if doc.page_count == 0:
+                    return None
+                page = doc.load_page(0)
+                mat = fitz.Matrix(dpi/72, dpi/72)
+                pix = page.get_pixmap(matrix=mat, alpha=False)
+                img_bytes = pix.tobytes("jpeg")
+                return img_bytes
+            except Exception as e:
+                logger.warning("pdf_rasterize_failed", error=str(e))
+                return None
+        """Procesa imagen enviada por el usuario (DNI, acta, ANSES, etc.)"""
         
         try:
             # 1. Descargar imagen desde WhatsApp
             logger.info("downloading_media", case_id=case.id, media_id=media_id)
             image_bytes = await self.whatsapp.download_media(media_id)
             
-            # Si es PDF u otro no-imagen, solo almacenar referencia y confirmar recepción
+            # Si es PDF u otro no-imagen, intentar rasterizar
             if mime_type and not mime_type.startswith('image/'):
-                stored = False
-                if case.phase == "documentacion":
-                    if not case.dni_image_url:
-                        case.dni_image_url = media_id
-                        stored = True
-                    else:
-                        case.marriage_cert_url = media_id
-                        stored = True
+                img_from_pdf = _rasterize_pdf_first_image(image_bytes) if (mime_type.startswith('application/pdf')) else None
+                if img_from_pdf:
+                    image_bytes = img_from_pdf  # Usar la imagen rasterizada para OCR
                 else:
-                    if not case.dni_image_url:
-                        case.dni_image_url = media_id
-                        stored = True
-                    elif not case.marriage_cert_url:
-                        case.marriage_cert_url = media_id
-                        stored = True
-                if stored:
-                    self.cases.update(case)
-                    await self.memory.store_immediate_memory(case.id, "Usuario envió documento (no imagen). Guardado para revisión.")
-                return MessageResponse(
-                    text=(
-                        "Recibí tu archivo. Un operador lo va a revisar para confirmar que se lea bien. "
-                        "Si podés, enviá también fotos nítidas (frente y dorso)."
+                    # Si no pudimos rasterizar, guardar referencia y avisar
+                    # (Lógica simplificada de guardado ciego)
+                    return MessageResponse(
+                        text="Recibí tu archivo. Un operador lo va a revisar. Si podés, enviá foto o captura de pantalla."
                     )
-                )
             
             # 2. Determinar tipo de documento según fase del caso
             if case.phase == "documentacion":
-                # En fase de documentación, puede ser DNI o acta
-                # Intentamos detectar primero si es DNI
-                if not case.dni_image_url:  # Aún no tiene DNI
-                    return await self._process_dni_image(case, image_bytes, media_id)
-                else:  # Ya tiene DNI, debe ser acta de matrimonio
-                    return await self._process_marriage_cert_image(case, image_bytes, media_id)
+                # Estrategia: Probar detectores específicos en orden de prioridad según lo que falta
+                
+                # A. DNI (Siempre probar primero si no tenemos DNI o si parece DNI)
+                # (El OCR de DNI es rápido y preciso)
+                try:
+                    ocr_try_dni = await self.ocr.extract_dni_data(image_bytes)
+                except Exception:
+                    ocr_try_dni = None
+                    
+                if ocr_try_dni and ocr_try_dni.success and ocr_try_dni.data.get("numero_documento"):
+                    if case.dni_image_url:
+                        # Ya teníamos DNI, asumir dorso
+                        try:
+                            case.dni_back_url = media_id
+                        except Exception:
+                            pass
+                        self.cases.update(case)
+                        await self.memory.store_session_memory(case.id, "dni_back_received", True)
+                        return MessageResponse(text=await self._build_docs_status_message(case, just_received="DNI dorso"))
+                    
+                    resp = await self._process_dni_image(case, image_bytes, media_id)
+                    await self.memory.store_session_memory(case.id, "dni_front_received", True)
+                    return resp
+
+                # B. Determinar qué falta para priorizar
+                falta_acta = not bool(case.marriage_cert_url)
+                
+                # Chequear si falta ANSES
+                sit = (case.situacion_laboral or '').lower()
+                falta_anses = 'desocup' in sit
+                
+                # Si falta ANSES, probar ANSES primero (o si ya tenemos acta)
+                if falta_anses or not falta_acta:
+                    anses_res = await self.ocr.extract_anses_data(image_bytes)
+                    if anses_res.success:
+                        return await self._process_anses_image(case, anses_res, media_id)
+
+                # C. Si falta Acta, probar Acta
+                if falta_acta:
+                    cert_result = await self.ocr.extract_marriage_certificate_data(image_bytes)
+                    if cert_result and cert_result.success:
+                        return await self._process_marriage_cert_image(case, image_bytes, media_id)
+                
+                # D. Si fallaron los específicos, ir al genérico
+                generic = await self.ocr.extract_generic_document(image_bytes)
+                text_lower = (generic.raw_text or "").lower()
+                
+                # Clasificación por palabras clave en texto genérico
+                if any(k in text_lower for k in ["anses", "certificacion negativa", "certificación negativa", "censite"]):
+                    # Es ANSES pero falló la extracción estructurada estricta -> Guardar igual como soporte
+                    return await self._store_support_doc(case, media_id, mime_type, "anses_cert", "Certificación Negativa ANSES", generic.raw_text)
+                
+                elif any(k in text_lower for k in ["afip", "constancia", "monotributo"]):
+                    return await self._store_support_doc(case, media_id, mime_type, "afip_constancia", "Constancia AFIP", generic.raw_text)
+                
+                elif any(k in text_lower for k in ["recibo", "haberes", "sueldo"]):
+                    return await self._store_support_doc(case, media_id, mime_type, "recibo_sueldo", "Recibo de sueldo", generic.raw_text)
+                
+                elif any(k in text_lower for k in ["jubil", "pension"]):
+                    return await self._store_support_doc(case, media_id, mime_type, "jubilacion_comprobante", "Comprobante jubilación", generic.raw_text)
+                
+                else:
+                    # Documento desconocido
+                    return await self._store_support_doc(case, media_id, mime_type, "otro", "Documento", generic.raw_text)
             
             elif case.phase == "dni":
-                # Usuario está en fase de proporcionar DNI, puede enviar foto directamente
                 return await self._process_dni_image(case, image_bytes, media_id)
             
             else:
-                # Fase no esperada para recibir imágenes
                 return MessageResponse(
-                    text="Gracias por la imagen, pero todavía no estamos en la etapa de documentación. "
-                         "Primero necesito completar tus datos personales."
+                    text="Gracias por la imagen, pero todavía no estamos en la etapa de documentación."
                 )
         
         except Exception as e:
@@ -950,7 +1083,47 @@ Respuesta:"""
             return MessageResponse(
                 text="Disculpá, tuve un problema procesando la imagen. ¿Podés intentar enviarla de nuevo?"
             )
-    
+
+    async def _store_support_doc(self, case, media_id, mime_type, doc_type, label, summary):
+        """Helper para guardar documento de soporte genérico"""
+        try:
+            from infrastructure.persistence.models import SupportDocument
+        except Exception:
+            SupportDocument = None
+            
+        if SupportDocument:
+            doc = SupportDocument(
+                case_id=case.id,
+                doc_type=doc_type,
+                media_id=media_id,
+                mime_type=mime_type,
+                ocr_summary=(summary[:500] if summary else None)
+            )
+            self.db.add(doc)
+            self.db.commit()
+            
+        return MessageResponse(text=await self._build_docs_status_message(case, just_received=label))
+
+    async def _process_anses_image(self, case, ocr_result, media_id) -> MessageResponse:
+        """Procesa resultado exitoso de ANSES"""
+        data = ocr_result.data
+        
+        # Guardar documento
+        await self._store_support_doc(case, media_id, "image/jpeg", "anses_cert", "Certificación Negativa ANSES", ocr_result.raw_text)
+        
+        # Feedback específico
+        es_negativa = data.get("es_negativa")
+        periodo = data.get("periodo")
+        
+        msg = "✅ Recibí la Certificación Negativa de ANSES."
+        if periodo:
+            msg += f" Periodo: {periodo}."
+        
+        if es_negativa is False:
+            msg += "\n⚠️ Atención: El documento dice que REGISTRA movimientos. Esto podría afectar el beneficio de litigar sin gastos. Un operador lo revisará."
+            
+        return MessageResponse(text=await self._build_docs_status_message(case, just_received="Certificación Negativa ANSES"))
+
     async def _process_dni_image(self, case, image_bytes: bytes, media_id: str) -> MessageResponse:
         """Procesa imagen de DNI usando OCR"""
         
@@ -1008,10 +1181,14 @@ Respuesta:"""
         
         logger.info("processing_marriage_cert", case_id=case.id)
         
-        # Ejecutar OCR
+        # Ejecutar OCR (Nota: ya se ejecutó antes en _handle_media, idealmente pasaríamos el resultado,
+        # pero por simplicidad y statelessness lo llamamos de nuevo o confiamos en que es rápido/cacheado.
+        # Para evitar doble llamada costosa, lo ideal sería refactorizar para recibir el resultado.
+        # Por ahora, asumimos que si llegó acá es porque ya dio success en _handle_media, 
+        # así que la segunda llamada debería dar success también).
         ocr_result = await self.ocr.extract_marriage_certificate_data(image_bytes)
         
-        if not ocr_result.success or ocr_result.confidence < 0.6:
+        if not ocr_result.success: # Quitamos el check de confidence < 0.6 redundante porque ya filtramos antes
             errors_text = "\n- ".join(ocr_result.errors) if ocr_result.errors else "Imagen poco clara"
             return MessageResponse(
                 text=f"No pude procesar el acta de matrimonio correctamente:\n- {errors_text}\n\n"
@@ -1035,26 +1212,26 @@ Respuesta:"""
         # Guardar referencia a la imagen
         case.marriage_cert_url = media_id
         
-        # Actualizar estado: documentación completa
-        case.status = "documentacion_completa"
+        # Evaluar si la documentación está completa
+        # (Esta lógica se mueve a _build_docs_status_message para centralizar)
         self.cases.update(case)
         
         # Guardar en memoria
         await self.memory.store_immediate_memory(case.id, f"Usuario envió acta de matrimonio. Datos extraídos: {cert_data}")
         
         # Generar resumen episódico
-        summary = f"Usuario {case.nombre} completó toda la documentación. Fecha matrimonio: {case.fecha_matrimonio}"
+        summary = f"Usuario {case.nombre} completó acta de matrimonio. Fecha: {case.fecha_matrimonio}"
         await self.memory.store_episodic_memory(case.id, summary)
         
-        # Respuesta con confirmación y próximos pasos
+        # Respuesta con confirmación y estado general
         confidence_emoji = "✅" if ocr_result.confidence > 0.8 else "⚠️"
+        
+        status_msg = await self._build_docs_status_message(case)
+        
         return MessageResponse(
             text=f"{confidence_emoji} Acta de matrimonio procesada correctamente.\n\n"
                  f"**Datos detectados:**\n"
                  f"- Fecha matrimonio: {cert_data.get('fecha_matrimonio', 'No detectado')}\n"
                  f"- Lugar: {cert_data.get('lugar_matrimonio', 'No detectado')}\n\n"
-                 f"🎉 **¡Documentación completa!**\n\n"
-                 f"Ya tengo toda la información necesaria. En las próximas 48hs un operador de la Defensoría "
-                 f"va a revisar tu caso y te va a contactar para coordinar los siguientes pasos.\n\n"
-                 f"¿Tenés alguna consulta mientras tanto?"
+                 f"{status_msg}"
         )

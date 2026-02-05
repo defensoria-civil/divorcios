@@ -1,0 +1,145 @@
+{
+  "titulo": "Base de Conocimiento: Divorcio en Argentina y Provincia de Mendoza",
+  "fecha_actualizacion": "31 de octubre de 2025",
+  "version": "2.0 - CORREGIDA",
+  "nota_importante": "CORRECCION: El procedimiento de divorcio en Mendoza NO incluye intento de conciliación automático en divorcio bilateral con acuerdo total. Solo se cita a audiencia si hay desacuerdos parciales.",
+  "PROCEDIMIENTO_CORRECTO_LEY_9120": {
+    "divorcio_bilateral_con_acuerdo_total": {
+      "titulo": "Divorcio Bilateral CON ACUERDO TOTAL (Art. 173)",
+      "paso_1": {
+        "numero": 1,
+        "descripcion": "Presentación",
+        "detalle": "Ambos cónyuges presentan escrito ÚNICO de divorcio bilateral junto con propuesta reguladora de efectos totalmente consensuada"
+      },
+      "paso_2": {
+        "numero": 2,
+        "descripcion": "Admisión de demanda",
+        "detalle": "El juez verifica que la propuesta sea completa y regule todos los efectos del divorcio"
+      },
+      "paso_3": {
+        "numero": 3,
+        "descripcion": "Dictado de DECRETO DE DIVORCIO",
+        "detalle": "El juez DIRECTAMENTE dicta decreto de divorcio dentro de 10 días y HOMOLOGA la propuesta consensuada. NO HAY AUDIENCIA."
+      },
+      "paso_4": {
+        "numero": 4,
+        "descripcion": "Escritura pública",
+        "detalle": "Se procede a adjudicación de bienes por escritura pública si corresponde"
+      },
+      "IMPORTANTE": "Si el acuerdo es TOTAL, no hay audiencia ni intento de conciliación. El procedimiento es directo: presentación → decreto y homologación"
+    },
+    "divorcio_bilateral_con_desacuerdos": {
+      "titulo": "Divorcio Bilateral CON DESACUERDOS PARCIALES (Art. 173)",
+      "paso_1": {
+        "numero": 1,
+        "descripcion": "Presentación",
+        "detalle": "Ambos cónyuges presentan escrito único de divorcio bilateral con propuestas diferentes en algunos aspectos"
+      },
+      "paso_2": {
+        "numero": 2,
+        "descripcion": "Dictado de DECRETO DE DIVORCIO",
+        "detalle": "El juez dicta decreto de divorcio dentro de 10 días (independientemente de los desacuerdos)"
+      },
+      "paso_3": {
+        "numero": 3,
+        "descripcion": "Citación a AUDIENCIA",
+        "detalle": "El juez cita a ambas partes personalmente con sus abogados a audiencia dentro de 10 días"
+      },
+      "paso_4": {
+        "numero": 4,
+        "descripcion": "Audiencia para solución consensuada",
+        "detalle": "En la audiencia, AMBAS PARTES DEBEN ASISTIR PERSONALMENTE. El juez intenta alcanzar solución consensuada sobre los puntos en desacuerdo"
+      },
+      "paso_5": {
+        "numero": 5,
+        "descripcion": "Resultado de la audiencia",
+        "detalle_a": "Si hay acuerdo (total o parcial): El juez homologa en la misma audiencia",
+        "detalle_b": "Si NO hay acuerdo: La jurisdicción permanece abierta para los puntos controvertidos, que se procesan conforme a las reglas de la Ley 9120"
+      },
+      "IMPORTANTE": "El divorcio ya está DECRETADO. La audiencia es solo para resolver los EFECTOS, no para decidir si hay divorcio o no."
+    },
+    "divorcio_unilateral": {
+      "titulo": "Divorcio Unilateral (Arts. 174-175)",
+      "paso_1": {
+        "numero": 1,
+        "descripcion": "Presentación de demanda",
+        "detalle": "Un cónyuge presenta demanda de divorcio unilateral con propuesta de regulación de efectos"
+      },
+      "paso_2": {
+        "numero": 2,
+        "descripcion": "Notificación y traslado",
+        "detalle": "Se notifica la demanda al otro cónyuge quien tiene 5 DÍAS para responder"
+      },
+      "paso_3": {
+        "numero": 3,
+        "descripcion": "Respuestas posibles del demandado",
+        "opcion_a": "ACEPTA la propuesta del actor",
+        "opcion_b": "PRESENTA propuesta alternativa diferente",
+        "opcion_c": "NO RESPONDE (guarda silencio)"
+      },
+      "paso_4": {
+        "numero": 4,
+        "titulo": "Si ACEPTA o hay propuestas COINCIDENTES",
+        "detalle": "El juez dicta DECRETO DE DIVORCIO dentro de 10 días y homologa la propuesta. NO hay audiencia."
+      },
+      "paso_5": {
+        "numero": 5,
+        "titulo": "Si NO RESPONDE en plazo (Art. 175)",
+        "detalle": "El juez dicta DECRETO DE DIVORCIO sin más trámite. La fecha de separación de hecho que alegó el actor se considera VERDADERA para extinguir la comunidad de bienes."
+      },
+      "paso_6": {
+        "numero": 6,
+        "titulo": "Si PRESENTA propuesta DIFERENTE",
+        "detalle": "El juez cita a audiencia dentro de 10 días conforme a Art. 438 CCyCN (por remisión del art. 174). En esta audiencia se intenta solución consensuada."
+      },
+      "resultado_audiencia": {
+        "if_acuerdo": "Se homologa (total o parcialmente) en la misma audiencia",
+        "if_no_acuerdo": "La jurisdicción permanece abierta para los puntos no resueltos"
+      },
+      "IMPORTANTE": "La audiencia SOLO ocurre si hay discordancia en las propuestas. No es automática."
+    }
+  },
+  "COMPARATIVA_PROCEDIMIENTOS": {
+    "tipo": "Divorcio Bilateral - Acuerdo Total",
+    "audiencia": "NO - No hay audiencia",
+    "intento_conciliacion": "NO - No hay intento de conciliación automático",
+    "plazo_sentencia": "10 días desde admisión",
+    "homologacion": "DIRECTA - sin audiencia",
+    "observacion": "Procedimiento más expedito cuando hay acuerdo total"
+  },
+  "ARTICULADO_CORRECTO": {
+    "art_173": {
+      "titulo": "Art. 173 Ley 9120 - Divorcio Bilateral",
+      "texto_resumido": "Los cónyuges presentan escrito único de divorcio. Incluyen propuesta reguladora de efectos o propuestas unilaterales. El juez, dentro de 10 días, dicta decreto de divorcio y homologa los efectos acordados. Si hay desacuerdo parcial, el juez cita a ambos a audiencia para intentar solución consensuada. En esta audiencia ambos deben asistir personalmente con sus abogados. Si llegan a acuerdo, se homologa. Si no, permanece abierta la jurisdicción para lo controvertido.",
+      "puntos_clave": [
+        "Escrito UNICO de ambos cónyuges",
+        "Juez dicta DECRETO dentro de 10 días",
+        "Homologación DIRECTA si acuerdo total",
+        "Audiencia SOLO si hay desacuerdos",
+        "Ambos asisten PERSONALMENTE a audiencia",
+        "El divorcio ya está DECRETADO (no se discute)"
+      ]
+    },
+    "art_174": {
+      "titulo": "Art. 174 Ley 9120 - Divorcio Unilateral",
+      "texto_resumido": "Un cónyuge presenta demanda con propuesta. Se traslada por 5 días al otro. Este puede aceptar o proponer alternativa. El juez dicta decreto dentro de 10 días. Si hay propuestas coincidentes, homologa. Si hay discordancia, cita a audiencia conforme art. 438 CCyCN. En audiencia se intenta acuerdo.",
+      "puntos_clave": [
+        "Presentación unilateral",
+        "Demandado tiene 5 DIAS para responder",
+        "Juez dicta DECRETO dentro de 10 días",
+        "Audiencia SOLO si hay propuestas diferentes",
+        "Si no contesta: decreto directo"
+      ]
+    },
+    "art_175": {
+      "titulo": "Art. 175 Ley 9120 - Omisión de Contestación",
+      "texto_resumido": "Si demandado no contesta en 5 días, juez dicta sentencia de divorcio sin más trámite. Si se alegó separación de hecho, la fecha indicada por actor se considera verdadera para extinguir comunidad. Permanece abierta jurisdicción para otros asuntos relacionados.",
+      "puntos_clave": [
+        "NO hay audiencia si no contesta",
+        "Decreto automático",
+        "Presunción: separación de hecho en fecha que alegó actor",
+        "Jurisdicción abierta para otros asuntos"
+      ]
+    }
+  }
+}

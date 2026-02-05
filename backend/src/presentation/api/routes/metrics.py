@@ -4,19 +4,12 @@ from sqlalchemy.orm import Session
 from datetime import datetime, timedelta
 import structlog
 
-from infrastructure.persistence.db import SessionLocal
+from infrastructure.persistence.db import get_db
 from presentation.api.dependencies.security import get_current_operator
 from infrastructure.persistence.models import Case
 
 logger = structlog.get_logger()
 router = APIRouter()
-
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
 
 @router.get("/summary")
 def metrics_summary(
@@ -56,8 +49,8 @@ def metrics_summary(
         "total_cases": total,
         "recent_cases_7d": recent_7d,
         "recent_cases_30d": recent_30d,
-        "by_status": {status: count for status, count in by_status},
-        "by_type": {type_: count for type_, count in by_type if type_}
+        "cases_by_status": {status: count for status, count in by_status},
+        "cases_by_type": {type_: count for type_, count in by_type if type_}
     }
 
 @router.get("/by_status")

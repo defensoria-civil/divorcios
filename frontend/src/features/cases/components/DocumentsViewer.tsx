@@ -8,7 +8,9 @@ import toast from 'react-hot-toast';
 interface DocumentsViewerProps {
   caseId: number;
   dniImageUrl?: string | null;
+  dniBackUrl?: string | null;
   marriageCertUrl?: string | null;
+  supportDocuments?: Array<{ id: number; doc_type: string; mime_type?: string | null; created_at: string }>;
 }
 
 interface ImageModalProps {
@@ -106,10 +108,11 @@ function ImageModal({ imageUrl, title, onClose }: ImageModalProps) {
   );
 }
 
-export function DocumentsViewer({ caseId, dniImageUrl, marriageCertUrl }: DocumentsViewerProps) {
+export function DocumentsViewer({ caseId, dniImageUrl, dniBackUrl, marriageCertUrl, supportDocuments }: DocumentsViewerProps) {
   const hasDni = !!dniImageUrl;
+  const hasDniBack = !!dniBackUrl;
   const hasMarriageCert = !!marriageCertUrl;
-  const hasDocuments = hasDni || hasMarriageCert;
+  const hasDocuments = hasDni || hasDniBack || hasMarriageCert;
 
   if (!hasDocuments) {
     return (
@@ -127,24 +130,68 @@ export function DocumentsViewer({ caseId, dniImageUrl, marriageCertUrl }: Docume
     );
   }
 
-  const openDoc = (doc: 'dni' | 'marriage_cert') => {
-    const url = casesApi.getDocumentUrl(caseId, doc);
-    window.open(url, '_blank');
+  const openDoc = async (doc: 'dni' | 'dni_back' | 'marriage_cert') => {
+    try {
+      const blob = await casesApi.getDocument(caseId, doc);
+      const url = URL.createObjectURL(blob);
+      window.open(url, '_blank');
+      // Liberar luego de un tiempo
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (e) {
+      toast.error('No se pudo abrir el documento');
+    }
   };
 
-  const downloadDoc = async (doc: 'dni' | 'marriage_cert') => {
+  const downloadDoc = async (doc: 'dni' | 'dni_back' | 'marriage_cert') => {
     try {
-      const url = casesApi.getDocumentUrl(caseId, doc);
-      const res = await fetch(url);
-      const blob = await res.blob();
+      const blob = await casesApi.getDocument(caseId, doc);
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
-      a.download = `${doc}.file`;
+      const mime = blob.type || 'image/jpeg';
+      const ext = mime === 'application/pdf' ? 'pdf' : (mime.split('/')[1] || 'jpg');
+      a.download = `${doc}.${ext}`;
       document.body.appendChild(a);
       a.click();
       URL.revokeObjectURL(a.href);
       document.body.removeChild(a);
     } catch (e) {
+      toast.error('No se pudo descargar el documento');
+    }
+  };
+
+  const otherDocs = (supportDocuments || []);
+  const labelFor = (t: string) => ({
+    anses_cert: 'Certificación Negativa ANSES',
+    afip_constancia: 'Constancia/posición AFIP',
+    recibo_sueldo: 'Recibo de sueldo',
+    jubilacion_comprobante: 'Comprobante jubilación/pensión',
+    otro: 'Documento',
+  } as Record<string,string>)[t] || t;
+
+  const openSupport = async (docId: number) => {
+    try {
+      const blob = await casesApi.getSupportDocument(caseId, docId);
+      const url = URL.createObjectURL(blob);
+      window.open(url, '_blank');
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch {
+      toast.error('No se pudo abrir el documento');
+    }
+  };
+
+  const downloadSupport = async (docId: number, suggestedName: string) => {
+    try {
+      const blob = await casesApi.getSupportDocument(caseId, docId);
+      const a = document.createElement('a');
+      const mime = blob.type || 'application/octet-stream';
+      const ext = mime === 'application/pdf' ? 'pdf' : (mime.split('/')[1] || 'bin');
+      a.href = URL.createObjectURL(blob);
+      a.download = `${suggestedName}.${ext}`;
+      document.body.appendChild(a);
+      a.click();
+      URL.revokeObjectURL(a.href);
+      document.body.removeChild(a);
+    } catch {
       toast.error('No se pudo descargar el documento');
     }
   };
@@ -156,15 +203,27 @@ export function DocumentsViewer({ caseId, dniImageUrl, marriageCertUrl }: Docume
         Documentación Cargada
       </h3>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {hasDni && (
           <div className="p-4 border rounded-lg bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700">
             <p className="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center gap-2">
-              <FileText className="w-4 h-4" /> DNI del solicitante
+              <FileText className="w-4 h-4" /> DNI (frente)
             </p>
             <div className="mt-3 flex gap-2">
               <Button variant="outline" onClick={() => openDoc('dni')}>Abrir</Button>
               <Button variant="outline" onClick={() => downloadDoc('dni')}><Download className="w-4 h-4 mr-1"/>Descargar</Button>
+            </div>
+          </div>
+        )}
+
+        {hasDniBack && (
+          <div className="p-4 border rounded-lg bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700">
+            <p className="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center gap-2">
+              <FileText className="w-4 h-4" /> DNI (dorso)
+            </p>
+            <div className="mt-3 flex gap-2">
+              <Button variant="outline" onClick={() => openDoc('dni_back')}>Abrir</Button>
+              <Button variant="outline" onClick={() => downloadDoc('dni_back')}><Download className="w-4 h-4 mr-1"/>Descargar</Button>
             </div>
           </div>
         )}
@@ -181,6 +240,26 @@ export function DocumentsViewer({ caseId, dniImageUrl, marriageCertUrl }: Docume
           </div>
         )}
       </div>
+
+      {/* Otros documentos */}
+      {otherDocs.length > 0 && (
+        <div className="mt-6">
+          <h4 className="text-md font-semibold mb-3 text-gray-900 dark:text-gray-100">Otros documentos</h4>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {otherDocs.map((doc) => (
+              <div key={doc.id} className="p-4 border rounded-lg bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700">
+                <p className="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center gap-2">
+                  <FileText className="w-4 h-4" /> {labelFor(doc.doc_type)}
+                </p>
+                <div className="mt-3 flex gap-2">
+                  <Button variant="outline" onClick={() => openSupport(doc.id)}>Abrir</Button>
+                  <Button variant="outline" onClick={() => downloadSupport(doc.id, labelFor(doc.doc_type))}><Download className="w-4 h-4 mr-1"/>Descargar</Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </Card>
   );
 }

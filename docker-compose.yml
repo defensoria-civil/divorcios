@@ -37,35 +37,15 @@ services:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: def_civil
     ports:
-      - "5432:5432"
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
   redis:
     image: redis:7-alpine
     ports:
-      - "6379:6379"
-  waha:
-    image: devlikeapro/waha:latest
-    restart: unless-stopped
-    environment:
-      - WAHA_HTTP_HOST=0.0.0.0
-      - WAHA_HTTP_PORT=3000
-      - WAHA_WEBHOOK_URL=http://host.docker.internal:8000/webhook/whatsapp
-      - WAHA_WEBHOOK_EVENTS=message
-      - WAHA_WEBHOOK_EVENTS_ENABLED=true
-      - WAHA_SESSION_STORE=file
-      - WAHA_SESSION_STORE_PATH=/app/sessions
-      - WAHA_LOG_LEVEL=info
-      - WAHA_LOG_FORMAT=PRETTY
-      - WAHA_DASHBOARD_ENABLED=true
-      - WAHA_MEDIA_DOWNLOAD=true
-      - WAHA_MEDIA_DOWNLOAD_PATH=/app/media
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    ports:
-      - "3000:3000"
-    volumes:
-      - waha_sessions:/app/sessions
-      - waha_media:/app/media
+      - "6380:6379"
 
 volumes:
   waha_sessions:
   waha_media:
+  postgres_data:

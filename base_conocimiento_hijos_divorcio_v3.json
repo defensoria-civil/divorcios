@@ -1,0 +1,130 @@
+[
+  {
+    "topico": "Definición de Divorcio",
+    "subtopico": "Efectos sobre los hijos",
+    "jurisdiccion": "Nacional (Argentina)",
+    "contenido": "El divorcio disuelve el matrimonio, pero no afecta los derechos y deberes hacia los hijos. La ley argentina protege el vínculo de los hijos con ambos padres, independientemente de su estado civil.",
+    "keywords": ["divorcio", "hijos", "efectos", "obligaciones"],
+    "articulo_clave": "CCyC Art. 438"
+  },
+  {
+    "topico": "Responsabilidad Parental",
+    "subtopico": "Definición y Titularidad",
+    "jurisdiccion": "Nacional (Argentina)",
+    "contenido": "La 'Responsabilidad Parental' (antes llamada 'Patria Potestad') es el conjunto de deberes y derechos de los progenitores sobre sus hijos. Tras un divorcio, la titularidad sigue siendo de AMBOS padres.",
+    "keywords": ["responsabilidad parental", "patria potestad", "deberes", "derechos", "titularidad"],
+    "articulo_clave": "CCyC Art. 638, 641"
+  },
+  {
+    "topico": "Responsabilidad Parental",
+    "subtopico": "Ejercicio Compartido (Regla)",
+    "jurisdiccion": "Nacional (Argentina)",
+    "contenido": "La ley presume que el ejercicio de la responsabilidad parental es compartido. Las decisiones importantes (educación, salud, viajes) deben ser tomadas por ambos progenitores, aunque ya no vivan juntos.",
+    "keywords": ["ejercicio compartido", "coparentalidad", "decisiones importantes", "consentimiento"],
+    "articulo_clave": "CCyC Art. 641, 645"
+  },
+  {
+    "topico": "Cuidado Personal",
+    "subtopico": "Definición (reemplaza 'Tenencia')",
+    "jurisdiccion": "Nacional (Argentina)",
+    "contenido": "El 'Cuidado Personal' (antes 'Tenencia') se refiere a los deberes y facultades de los progenitores sobre la vida cotidiana del hijo (convivencia, rutinas, cuidados diarios). IMPORTANTE: Desde 2015 con el CCyC, el término 'tenencia' fue reemplazado por 'cuidado personal'.",
+    "keywords": ["cuidado personal", "tenencia", "convivencia", "rutinas", "término actualizado", "CCyC 2015"],
+    "articulo_clave": "CCyC Art. 648"
+  },
+  {
+    "topico": "Cuidado Personal",
+    "subtopico": "Tipo: Compartido (Regla General)",
+    "jurisdiccion": "Nacional (Argentina)",
+    "contenido": "La ley argentina prefiere el Cuidado Personal Compartido. Esto significa que ambos padres se involucran activamente en la crianza, aunque el hijo pueda vivir principalmente con uno (modalidad indistinta) o alternar (modalidad alternada).",
+    "keywords": ["cuidado compartido", "indistinto", "alternado", "preferencia legal"],
+    "articulo_clave": "CCyC Art. 650, 651"
+  },
+  {
+    "topico": "Cuidado Personal",
+    "subtopico": "Tipo: Unilateral (Excepción)",
+    "jurisdiccion": "Nacional (Argentina)",
+    "contenido": "El Cuidado Personal Unilateral (cuando el hijo vive solo con uno de los padres) es excepcional. El juez solo lo decide si el cuidado compartido es imposible o perjudicial para el niño. El otro padre mantiene su derecho de comunicación.",
+    "keywords": ["cuidado unilateral", "excepción", "perjudicial", "visitas"],
+    "articulo_clave": "CCyC Art. 653"
+  },
+  {
+    "topico": "Régimen de Comunicación",
+    "subtopico": "Reemplazo del término 'Régimen de Visitas'",
+    "jurisdiccion": "Nacional (Argentina)",
+    "contenido": "El CCyC reemplazó el término 'régimen de visitas' por 'régimen de comunicación'. Este derecho-deber permite al progenitor no conviviente mantener contacto adecuado con su hijo. No es una 'visita', sino un vínculo parental.",
+    "keywords": ["régimen de comunicación", "visitas", "término actualizado", "derecho del hijo", "derecho del progenitor"],
+    "articulo_clave": "CCyC Art. 652, 555"
+  },
+  {
+    "topico": "Alimentos",
+    "subtopico": "Definición y Cobertura",
+    "jurisdiccion": "Nacional (Argentina)",
+    "contenido": "La 'cuota alimentaria' no es solo comida. Incluye todo lo necesario para la vida del hijo: vivienda, educación, salud, vestimenta, esparcimiento y gastos para adquirir una profesión u oficio.",
+    "keywords": ["alimentos", "cuota alimentaria", "cobertura", "educación", "salud", "vivienda"],
+    "articulo_clave": "CCyC Art. 659"
+  },
+  {
+    "topico": "Alimentos",
+    "subtopico": "Duración (Hasta los 21 años)",
+    "jurisdiccion": "Nacional (Argentina)",
+    "contenido": "La obligación de pagar alimentos a los hijos subsiste hasta que cumplen 21 años, aunque ya sean mayores de edad (18 años) y no estudien.",
+    "keywords": ["alimentos", "edad", "hasta cuando", "21 años", "mayoría de edad"],
+    "articulo_clave": "CCyC Art. 658"
+  },
+  {
+    "topico": "Alimentos",
+    "subtopico": "Duración (Hijo estudiante, hasta 25 años)",
+    "jurisdiccion": "Nacional (Argentina)",
+    "contenido": "Si el hijo estudia (universidad, terciario, oficio) y eso le impide trabajar para mantenerse, la obligación de alimentos se extiende hasta los 25 años.",
+    "keywords": ["alimentos", "hijo estudiante", "universidad", "25 años"],
+    "articulo_clave": "CCyC Art. 663"
+  },
+  {
+    "topico": "Alimentos",
+    "subtopico": "Hijo con Discapacidad",
+    "jurisdiccion": "Nacional (Argentina)",
+    "contenido": "Si el hijo tiene discapacidad acreditada con CUD (Certificado Único de Discapacidad), la obligación alimentaria puede persistir sin límite de edad, conforme a las necesidades derivadas de la discapacidad.",
+    "keywords": ["alimentos", "discapacidad", "CUD", "sin límite de edad", "hijo mayor"],
+    "articulo_clave": "CCyC Art. 662, 663"
+  },
+  {
+    "topico": "Alimentos",
+    "subtopico": "Fijación en Cuidado Compartido",
+    "jurisdiccion": "Nacional (Argentina)",
+    "contenido": "En el cuidado compartido, si uno de los progenitores tiene más ingresos que el otro, debe pagar una cuota alimentaria para asegurar que el hijo mantenga el mismo nivel de vida en ambos hogares.",
+    "keywords": ["alimentos", "cuidado compartido", "nivel de vida", "más ingresos"],
+    "articulo_clave": "CCyC Art. 666"
+  },
+  {
+    "topico": "Proceso de Divorcio",
+    "subtopico": "Convenio Regulador",
+    "jurisdiccion": "Nacional (Argentina)",
+    "contenido": "Al iniciar un divorcio, es obligatorio presentar un 'Convenio Regulador' (o una propuesta). Este es un acuerdo sobre los efectos del divorcio, incluyendo el cuidado de los hijos, la comunicación y los alimentos.",
+    "keywords": ["divorcio", "proceso", "convenio regulador", "acuerdo"],
+    "articulo_clave": "CCyC Art. 439"
+  },
+  {
+    "topico": "Proceso en Mendoza",
+    "subtopico": "Ley Aplicable",
+    "jurisdiccion": "Mendoza (Provincial)",
+    "contenido": "En Mendoza, el procedimiento de divorcio y los reclamos de familia se rigen por el Código Procesal de Familia y Violencia Familiar (Ley 9120). El juez competente es el Juez de Familia.",
+    "keywords": ["mendoza", "procedimiento", "ley 9120", "juez de familia", "forma"],
+    "articulo_clave": "Ley 9120 Mendoza"
+  },
+  {
+    "topico": "Proceso en Mendoza",
+    "subtopico": "Falta de Acuerdo",
+    "jurisdiccion": "Mendoza (Provincial)",
+    "contenido": "Si los padres no se ponen de acuerdo sobre los hijos en el divorcio, el Juez de Familia de Mendoza decidirá, priorizando el interés del niño y su derecho a ser oído. La ley 9120 fomenta las audiencias y la mediación.",
+    "keywords": ["mendoza", "desacuerdo", "juez decide", "interés superior del niño", "mediación"],
+    "articulo_clave": "Ley 9120 Mendoza"
+  },
+  {
+    "topico": "Terminología Actualizada",
+    "subtopico": "Cambios CCyC 2015",
+    "jurisdiccion": "Nacional (Argentina)",
+    "contenido": "El Código Civil y Comercial de 2015 modernizó la terminología de derecho de familia: 'Patria Potestad' → 'Responsabilidad Parental'; 'Tenencia' → 'Cuidado Personal'; 'Régimen de Visitas' → 'Régimen de Comunicación'. Estos cambios reflejan una perspectiva centrada en el interés del niño y la coparentalidad.",
+    "keywords": ["terminología", "CCyC 2015", "modernización", "cuidado personal", "responsabilidad parental", "régimen de comunicación"],
+    "articulo_clave": "CCyC Arts. 638, 648, 652"
+  }
+]

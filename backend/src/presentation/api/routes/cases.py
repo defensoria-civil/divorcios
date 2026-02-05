@@ -6,20 +6,13 @@ from datetime import datetime, timedelta
 import structlog
 
 from presentation.api.schemas.cases import CaseOut
-from infrastructure.persistence.db import SessionLocal
+from infrastructure.persistence.db import get_db
 from infrastructure.persistence.models import Case, Message
 from presentation.api.dependencies.security import get_current_operator
 from infrastructure.document.pdf_service_impl import TemplatePDFService
 
 logger = structlog.get_logger()
 router = APIRouter()
-
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
 
 @router.get("/")
 def list_cases(
@@ -147,6 +140,21 @@ def get_case(
         Message.case_id == case_id
     ).order_by(Message.created_at).all()
     
+    # Construir lista de documentos de respaldo
+    support_docs = []
+    try:
+        from infrastructure.persistence.models import SupportDocument
+        docs = db.query(SupportDocument).filter(SupportDocument.case_id == case.id).order_by(SupportDocument.created_at).all()
+        for d in docs:
+            support_docs.append({
+                "id": d.id,
+                "doc_type": d.doc_type,
+                "mime_type": d.mime_type,
+                "created_at": d.created_at.isoformat(),
+            })
+    except Exception:
+        pass
+
     result = {
         "id": case.id,
         "phone": case.phone,
@@ -179,7 +187,9 @@ def get_case(
         "econ_elegible_preliminar_conyuge": case.econ_elegible_preliminar_conyuge,
         "econ_razones_conyuge": case.econ_razones_conyuge,
         "dni_image_url": case.dni_image_url,
+        "dni_back_url": getattr(case, 'dni_back_url', None),
         "marriage_cert_url": case.marriage_cert_url,
+        "support_documents": support_docs,
         "created_at": case.created_at.isoformat(),
         "updated_at": case.updated_at.isoformat(),
         "messages": [
@@ -209,7 +219,7 @@ def update_case(case_id: int, updates: dict, db: Session = Depends(get_db), _: d
     
     # Lista de campos permitidos para actualización
     allowed_fields = [
-        "type", "apellido", "nombres", "dni", "cuit", "domicilio",
+        "type", "phase", "apellido", "nombres", "dni", "cuit", "domicilio",
         "email", "ocupacion", "nacionalidad", "fecha_nacimiento",
         "apellido_conyuge", "nombres_conyuge", "dni_conyuge", "cuit_conyuge",
         "domicilio_conyuge", "email_conyuge", "ocupacion_conyuge", "nacionalidad_conyuge",
@@ -365,11 +375,36 @@ def validate_case_data(case_id: int, db: Session = Depends(get_db), _: dict = De
         "completion_percentage": int((len(complete) / len(required_fields["common"])) * 100)
     }
 
+@router.get("/{case_id}/documents/support/{doc_id}")
+async def get_support_document(case_id: int, doc_id: int, db: Session = Depends(get_db), _: dict = Depends(get_current_operator)):
+    from infrastructure.messaging.waha_service_impl import WAHAWhatsAppService
+    from infrastructure.persistence.models import SupportDocument
+    case = db.query(Case).get(case_id)
+    if not case:
+        raise HTTPException(status_code=404, detail="Caso no encontrado")
+    doc = db.query(SupportDocument).filter(SupportDocument.id == doc_id, SupportDocument.case_id == case_id).first()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Documento no encontrado")
+    try:
+        whatsapp = WAHAWhatsAppService()
+        file_bytes = await whatsapp.download_media(doc.media_id)
+        # Detect mimetype
+        import imghdr
+        if file_bytes[:4] == b"%PDF":
+            mimetype = "application/pdf"
+        else:
+            image_type = imghdr.what(None, h=file_bytes)
+            mimetype = f"image/{image_type}" if image_type else (doc.mime_type or "application/octet-stream")
+        return Response(content=file_bytes, media_type=mimetype)
+    except Exception as e:
+        logger.error("support_document_download_error", case_id=case_id, doc_id=doc_id, error=str(e))
+        raise HTTPException(status_code=500, detail=f"Error al descargar documento: {str(e)}")
+
 @router.get("/{case_id}/documents/{doc_type}")
 async def get_document_image(case_id: int, doc_type: str, db: Session = Depends(get_db), _: dict = Depends(get_current_operator)):
     """
-    Descarga la imagen de un documento (DNI o acta de matrimonio)
-    doc_type: 'dni' o 'marriage_cert'
+    Descarga la imagen de un documento (DNI frente, DNI dorso o acta de matrimonio)
+    doc_type: 'dni' | 'dni_back' | 'marriage_cert'
     """
     from infrastructure.messaging.waha_service_impl import WAHAWhatsAppService
     
@@ -380,12 +415,15 @@ async def get_document_image(case_id: int, doc_type: str, db: Session = Depends(
     # Determinar qué documento descargar
     if doc_type == 'dni':
         media_id = case.dni_image_url
-        filename = f"dni_caso_{case_id}.jpg"
+        filename = f"dni_frente_caso_{case_id}.jpg"
+    elif doc_type == 'dni_back':
+        media_id = getattr(case, 'dni_back_url', None)
+        filename = f"dni_dorso_caso_{case_id}.jpg"
     elif doc_type == 'marriage_cert':
         media_id = case.marriage_cert_url
         filename = f"acta_matrimonio_caso_{case_id}.jpg"
     else:
-        raise HTTPException(status_code=400, detail="Tipo de documento inválido. Usar: dni o marriage_cert")
+        raise HTTPException(status_code=400, detail="Tipo de documento inválido. Usar: dni, dni_back o marriage_cert")
     
     if not media_id:
         raise HTTPException(status_code=404, detail=f"No se encontró {doc_type} para este caso")

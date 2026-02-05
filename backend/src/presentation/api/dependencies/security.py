@@ -1,10 +1,10 @@
 from jose import jwt, JWTError
 from fastapi import Depends, HTTPException
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-import os
+from core.config import settings
 
 security = HTTPBearer()
-SECRET_KEY = os.getenv("SECRET_KEY", "change_me")
+SECRET_KEY = settings.secret_key
 ALGORITHM = "HS256"
 
 def get_current_operator(credentials: HTTPAuthorizationCredentials = Depends(security)):

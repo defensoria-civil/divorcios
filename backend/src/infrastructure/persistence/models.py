@@ -30,6 +30,7 @@ class Case(Base):
     
     # document references (media IDs from WhatsApp)
     dni_image_url = Column(String(255), nullable=True)
+    dni_back_url = Column(String(255), nullable=True)
     marriage_cert_url = Column(String(255), nullable=True)
     
     # marriage data
@@ -88,6 +89,7 @@ class Case(Base):
     econ_razones_conyuge = Column(Text, nullable=True)
 
     messages = relationship("Message", back_populates="case", cascade="all, delete-orphan")
+    support_documents = relationship("SupportDocument", back_populates="case", cascade="all, delete-orphan")
 
 class Message(Base):
     __tablename__ = "messages"
@@ -115,6 +117,18 @@ class SemanticKnowledge(Base):
     content = Column(Text)
     embedding = Column(Vector(768))
     created_at = Column(DateTime, default=datetime.utcnow)
+
+class SupportDocument(Base):
+    __tablename__ = "support_documents"
+    id = Column(Integer, primary_key=True)
+    case_id = Column(Integer, ForeignKey("cases.id"), index=True, nullable=False)
+    doc_type = Column(String(64), nullable=False)  # anses_cert | afip_constancia | recibo_sueldo | jubilacion_comprobante | otro
+    media_id = Column(String(255), nullable=False)
+    mime_type = Column(String(128), nullable=True)
+    ocr_summary = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    case = relationship("Case", back_populates="support_documents")
 
 class User(Base):
     """Modelo de usuario para autenticación y autorización"""

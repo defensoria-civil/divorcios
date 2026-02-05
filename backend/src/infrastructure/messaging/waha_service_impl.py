@@ -21,17 +21,37 @@ class WAHAWhatsAppService(WhatsAppService):
         }
     
     async def send_message(self, phone_or_chat: str, message: str) -> dict:
-        """Envía un mensaje de texto. Acepta MSISDN o JID (chatId)."""
+        """Envía un mensaje de texto. Acepta MSISDN o JID (chatId).
+        Reglas:
+        - Si viene JID (@c.us/@lid), usarlo tal cual.
+        - Si viene solo dígitos y aparenta ser un LID (>=15 dígitos y no empieza con 54/52/55/56/1), enviar como {digits}@lid.
+        - En caso contrario, asumir MSISDN y, si es AR sin CC, prefijar 549.
+        """
         raw = phone_or_chat.strip()
         # Determinar chatId y phone según formato recibido
         if "@" in raw:
             chat_id = raw  # ya viene como JID (p.ej. 549xxxxxxxxx@c.us o 261...@lid)
             msisdn = raw.split("@")[0]
+            is_lid = chat_id.endswith("@lid")
         else:
             msisdn = raw.lstrip("+")
-            if not msisdn.startswith("549"):
-                msisdn = f"549{msisdn}"
-            chat_id = f"{msisdn}@c.us"
+            is_lid = False
+            # Heurística: LID-like (WA local id) => muchos dígitos y sin código país habitual
+            if len(msisdn) >= 15 and not msisdn.startswith(("54", "52", "55", "56", "1")):
+                chat_id = f"{msisdn}@lid"
+                is_lid = True
+            else:
+                # Asumir MSISDN; para Argentina, prefijar 549 si no viene CC
+                if not msisdn.startswith("54"):
+                    # si viene local (10 dígitos), agregar 549
+                    if len(msisdn) == 10:
+                        msisdn = f"549{msisdn}"
+                    else:
+                        msisdn = f"549{msisdn}"
+                elif msisdn.startswith("54") and not msisdn.startswith("549"):
+                    # agregar 9 móvil si falta
+                    msisdn = msisdn.replace("54", "549", 1)
+                chat_id = f"{msisdn}@c.us"
         
         url = f"{self.base_url}/api/sendText"
         payload = {
@@ -39,6 +59,7 @@ class WAHAWhatsAppService(WhatsAppService):
             "chatId": chat_id,
             "text": message
         }
+        # Para LID no intentamos fallback por phone, ya que WAHA requiere chatId
         
         try:
             async with httpx.AsyncClient(timeout=30, verify=False) as client:
@@ -46,13 +67,16 @@ class WAHAWhatsAppService(WhatsAppService):
                 if response.status_code >= 400:
                     body = response.text
                     logger.warning("whatsapp_send_primary_failed", status=response.status_code, body=body)
-                    # Fallback: usar parámetro 'phone' en lugar de 'chatId'
-                    alt_payload = {"session": self.session_name, "phone": msisdn, "text": message}
-                    alt_resp = await client.post(url, json=alt_payload, headers=self._headers())
-                    alt_resp.raise_for_status()
-                    result = alt_resp.json()
-                    logger.info("whatsapp_message_sent_fallback_phone", phone=msisdn, chat_id=chat_id, result=result)
-                    return result
+                    # Fallback solo si NO es LID; con LID WAHA requiere chatId
+                    if not is_lid:
+                        alt_payload = {"session": self.session_name, "phone": msisdn, "text": message}
+                        alt_resp = await client.post(url, json=alt_payload, headers=self._headers())
+                        alt_resp.raise_for_status()
+                        result = alt_resp.json()
+                        logger.info("whatsapp_message_sent_fallback_phone", phone=msisdn, chat_id=chat_id, result=result)
+                        return result
+                    else:
+                        response.raise_for_status()
                 response.raise_for_status()
                 result = response.json()
                 logger.info("whatsapp_message_sent", phone=msisdn, chat_id=chat_id, result=result)
@@ -67,11 +91,22 @@ class WAHAWhatsAppService(WhatsAppService):
         if "@" in raw:
             chat_id = raw
             msisdn = raw.split("@")[0]
+            is_lid = chat_id.endswith("@lid")
         else:
             msisdn = raw.lstrip("+")
-            if not msisdn.startswith("549"):
-                msisdn = f"549{msisdn}"
-            chat_id = f"{msisdn}@c.us"
+            is_lid = False
+            if len(msisdn) >= 15 and not msisdn.startswith(("54", "52", "55", "56", "1")):
+                chat_id = f"{msisdn}@lid"
+                is_lid = True
+            else:
+                if not msisdn.startswith("54"):
+                    if len(msisdn) == 10:
+                        msisdn = f"549{msisdn}"
+                    else:
+                        msisdn = f"549{msisdn}"
+                elif msisdn.startswith("54") and not msisdn.startswith("549"):
+                    msisdn = msisdn.replace("54", "549", 1)
+                chat_id = f"{msisdn}@c.us"
         
         url = f"{self.base_url}/api/sendFile"
         
@@ -96,15 +131,18 @@ class WAHAWhatsAppService(WhatsAppService):
                 if response.status_code >= 400:
                     body = response.text
                     logger.warning("whatsapp_send_file_primary_failed", status=response.status_code, body=body)
-                    # Fallback: usar 'phone' en lugar de 'chatId'
-                    alt_payload = dict(payload)
-                    alt_payload.pop("chatId", None)
-                    alt_payload["phone"] = msisdn
-                    alt_resp = await client.post(url, json=alt_payload, headers=self._headers())
-                    alt_resp.raise_for_status()
-                    result = alt_resp.json()
-                    logger.info("whatsapp_document_sent_fallback_phone", phone=msisdn, chat_id=chat_id, filename=filename, result=result)
-                    return result
+                    # Fallback: usar 'phone' en lugar de 'chatId' solo si NO es LID
+                    if not is_lid:
+                        alt_payload = dict(payload)
+                        alt_payload.pop("chatId", None)
+                        alt_payload["phone"] = msisdn
+                        alt_resp = await client.post(url, json=alt_payload, headers=self._headers())
+                        alt_resp.raise_for_status()
+                        result = alt_resp.json()
+                        logger.info("whatsapp_document_sent_fallback_phone", phone=msisdn, chat_id=chat_id, filename=filename, result=result)
+                        return result
+                    else:
+                        response.raise_for_status()
                 response.raise_for_status()
                 result = response.json()
                 logger.info("whatsapp_document_sent", phone=msisdn, chat_id=chat_id, filename=filename, result=result)

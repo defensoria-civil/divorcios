@@ -78,8 +78,28 @@ export const casesApi = {
   /**
    * Obtiene la URL de un documento (DNI o acta de matrimonio)
    */
-  getDocumentUrl(id: number, docType: 'dni' | 'marriage_cert'): string {
+  getDocumentUrl(id: number, docType: 'dni' | 'dni_back' | 'marriage_cert'): string {
     return `/api/cases/${id}/documents/${docType}`;
+  },
+
+  /**
+   * Descarga un documento como Blob (con autenticación)
+   */
+  async getDocument(id: number, docType: 'dni' | 'dni_back' | 'marriage_cert'): Promise<Blob> {
+    const response = await apiClient.get(`/api/cases/${id}/documents/${docType}`, {
+      responseType: 'blob',
+    });
+    return response.data;
+  },
+
+  /**
+   * Descarga un documento de respaldo por id
+   */
+  async getSupportDocument(id: number, docId: number): Promise<Blob> {
+    const response = await apiClient.get(`/api/cases/${id}/documents/support/${docId}`, {
+      responseType: 'blob',
+    });
+    return response.data;
   },
 
   /**

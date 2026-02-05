@@ -1,0 +1,415 @@
+# WARP.md
+
+This file provides guidance to WARP (warp.dev) when working with code in this repository.
+
+## Project Overview
+
+Legal assistance automation system for divorce proceedings at Defensoría Civil de San Rafael, Mendoza, Argentina. Implements a WhatsApp bot with contextual AI memory, hallucination detection, and document processing using Clean Architecture principles.
+
+## Common Commands
+
+### Docker (Recommended)
+
+```powershell
+# Start all services
+docker compose up --build
+
+# Start in detached mode
+docker compose up -d
+
+# Stop all services
+docker compose down
+
+# View logs
+docker compose logs -f api
+docker compose logs -f worker
+
+# Rebuild specific service
+docker compose up --build api
+```
+
+### Backend Development
+
+```powershell
+# Install dependencies
+cd backend
+pip install -r requirements.txt
+
+# Set PYTHONPATH for imports
+$env:PYTHONPATH = "C:\Users\spereyra\CODE\PROYECTOS\defensoria-civil\divorcios\backend\src"
+
+# Run API server
+uvicorn presentation.api.main:app --reload --host 0.0.0.0 --port 8000
+
+# Run Celery worker (separate terminal)
+celery -A infrastructure.tasks.celery_app.app worker -l info
+
+# Code formatting
+black backend/src backend/tests
+
+# Linting
+ruff check backend/src backend/tests
+
+# Type checking (optional)
+mypy backend/src
+```
+
+### Testing
+
+```powershell
+# Run all tests
+pytest backend/tests -v
+
+# Run unit tests only
+pytest backend/tests/unit -v
+
+# Run integration tests only
+pytest backend/tests/integration -v
+
+# Run specific test file
+pytest backend/tests/unit/test_date_validation_service.py -v
+
+# Run with coverage
+pytest backend/tests --cov=backend/src --cov-report=html
+```
+
+### Database
+
+```powershell
+# Create database (PostgreSQL must be running)
+createdb def_civil
+
+# Enable pgvector extension
+psql def_civil -c "CREATE EXTENSION vector;"
+
+# Create test database
+createdb def_civil_test
+```
+
+### Frontend Development
+
+```powershell
+cd frontend
+
+# Install dependencies
+npm install
+
+# Run dev server
+npm run dev
+
+# Build for production
+npm run build
+
+# Lint
+npm run lint
+```
+
+## Architecture
+
+This codebase follows **Clean Architecture** with strict layer separation and dependency inversion.
+
+### Layer Structure
+
+```
+backend/src/
+├── core/                    # Configuration and shared constants
+├── application/             # Business logic layer
+│   ├── dtos/               # Data Transfer Objects
+│   ├── interfaces/         # Abstract interfaces (ports)
+│   ├── services/           # Application services
+│   └── use_cases/          # Use case orchestration
+├── infrastructure/          # External concerns & implementations
+│   ├── ai/                 # LLM implementations (Gemini, Ollama)
+│   ├── document/           # PDF generation
+│   ├── messaging/          # WhatsApp (WAHA) integration
+│   ├── ocr/                # OCR with Gemini Vision
+│   ├── persistence/        # Database (SQLAlchemy, repositories)
+│   ├── services/           # Infrastructure service implementations
+│   ├── tasks/              # Celery async tasks
+│   └── validation/         # Validation service implementations
+└── presentation/           # API layer
+    └── api/
+        ├── dependencies/   # FastAPI dependency injection
+        ├── middleware/     # Security, rate limiting, logging
+        ├── routes/         # API endpoints
+        └── schemas/        # Request/response Pydantic models
+```
+
+### Key Architectural Patterns
+
+**Dependency Inversion**: Application layer defines interfaces in `application/interfaces/`, infrastructure provides implementations. Example:
+- Interface: `application/interfaces/ai/llm_client.py`
+- Implementation: `infrastructure/ai/gemini_client.py`, `infrastructure/ai/ollama_client.py`
+
+**Use Case Pattern**: Business logic orchestration in `application/use_cases/`. Main entry point is `ProcessIncomingMessageUseCase` which coordinates:
+- Message storage
+- Context retrieval from memory system
+- LLM interaction
+- Hallucination detection
+- Phase-based state machine
+- Response validation
+
+**Repository Pattern**: Data access abstraction in `infrastructure/persistence/repositories.py`:
+- `CaseRepository`: CRUD for divorce cases
+- `MessageRepository`: Conversation history
+- `MemoryRepository`: Multi-layer memory system
+
+**Router Pattern for LLM**: `LLMRouter` in `infrastructure/ai/router.py` provides intelligent model selection and automatic fallback across multiple providers (Ollama Cloud → Ollama Local → Gemini).
+
+### Memory System Architecture
+
+The system implements a **4-layer contextual memory** system in `application/services/memory_service.py`:
+
+1. **Immediate Memory**: Last 10 messages in conversation (recency buffer)
+2. **Session Memory**: Current case data as JSON (working memory)
+3. **Episodic Memory**: Past conversation summaries with **pgvector embeddings** for semantic search
+4. **Semantic Memory**: Legal knowledge base with vector search
+
+Memory retrieval uses **pgvector** for cosine similarity search on embeddings generated by `LLMRouter.embed()`.
+
+### State Machine Flow
+
+Conversation is managed by phase-based state machine in `ProcessIncomingMessageUseCase._handle_phase()`:
+
+```
+inicio → tipo_divorcio → nombre → dni → fecha_nacimiento → domicilio → documentacion
+```
+
+Each phase has dedicated validation logic and transitions to next phase on success.
+
+### Validation Pipeline
+
+Multi-layer validation system:
+
+1. **Input Validation**: Response validation service checks user answers against expected field types
+2. **Business Rules**: Date validation (age ≥18), address validation (jurisdiction check)
+3. **Hallucination Detection**: `HallucinationDetectionService` checks LLM responses for fabricated information using confidence scoring
+4. **Security**: Rate limiting middleware, prompt injection detection
+
+## LLM Multi-Provider Architecture
+
+### Overview
+
+El sistema es **agnóstico al proveedor de LLM**, con selección inteligente de modelos según la tarea y fallback automático entre proveedores.
+
+### Proveedores Disponibles
+
+1. **Ollama Cloud** (Primario) - `https://ollama.com`
+2. **Ollama Local** (Fallback automático)
+3. **Google Gemini** (Fallback crítico)
+
+### Estrategia de Selección de Modelos
+
+El `LLMRouter` mapea tipos de tarea a modelos específicos optimizados:
+
+| Tipo de Tarea | Modelo | Proveedor | Razón |
+|---------------|--------|-----------|-------|
+| `chat` | minimax-m2:cloud | Ollama Cloud | Balance costo/calidad para conversación general |
+| `reasoning` | deepseek-v3.1:671b-cloud | Ollama Cloud | Razonamiento complejo y lógica avanzada |
+| `hallucination_check` | glm-4.6:cloud | Ollama Cloud | Análisis de consistencia y validación |
+| `vision_ocr` | qwen3-vl:cloud | Ollama Cloud | Visión + lenguaje para OCR de documentos |
+| `embeddings` | nomic-embed-text | Ollama Local | Velocidad para búsqueda semántica |
+
+### Cascada de Fallback
+
+Cuando un proveedor falla, el router intenta automáticamente con el siguiente:
+
+```
+Ollama Cloud (primario)
+    ↓ (en caso de fallo)
+Ollama Local 
+    ↓ (en caso de fallo)
+Google Gemini (crítico)
+    ↓ (en caso de fallo)
+Excepción
+```
+
+**Excepciones:**
+- Embeddings prefieren Ollama Local primero por velocidad
+- OCR usa cascada: Ollama Vision → Gemini Vision
+
+### Implementaciones
+
+#### LLMRouter
+**Archivo:** `infrastructure/ai/router.py`
+
+**Responsabilidades:**
+- Seleccionar proveedor y modelo según `task_type`
+- Gestionar fallbacks automáticos
+- Logging de proveedor usado, latencia y fallos
+- Pasar parámetros específicos del proveedor (model, tools)
+
+**Uso:**
+```python
+from infrastructure.ai.router import LLMRouter
+
+router = LLMRouter()
+
+# Chat con selección automática de modelo
+response = await router.chat(
+    messages=[{"role": "user", "content": "Hola"}],
+    task_type="chat"  # Usa minimax-m2:cloud
+)
+
+# Validación de alucinaciones con modelo especializado
+response = await router.chat(
+    messages=[{"role": "user", "content": "Valida esto..."}],
+    task_type="hallucination_check"  # Usa glm-4.6:cloud
+)
+```
+
+#### OllamaCloudClient
+**Archivo:** `infrastructure/ai/ollama_cloud_client.py`
+
+**Responsabilidades:**
+- Autenticación con Bearer token
+- Requests a `/api/chat` y `/api/embeddings`
+- Soporte para parámetro `model` dinámico
+- Manejo de timeouts largos (120s)
+
+#### OllamaVisionClient
+**Archivo:** `infrastructure/ai/ollama_vision_client.py`
+
+**Responsabilidades:**
+- Conversión de imágenes a base64
+- Análisis multimodal (texto + imágenes)
+- Soporte para múltiples imágenes en una consulta
+- Optimizado para qwen3-vl:cloud
+
+#### MultiProviderOCRService
+**Archivo:** `infrastructure/ocr/ocr_service_impl.py`
+
+**Responsabilidades:**
+- OCR de DNI argentino (estructura JSON)
+- OCR de acta de matrimonio
+- Validación de datos extraídos
+- Fallback: Ollama Vision → Gemini Vision
+
+### Configuración
+
+**Variables de entorno requeridas en `.env`:**
+
+```env
+# Ollama Cloud (primario)
+OLLAMA_CLOUD_API_KEY=tu_api_key_aqui
+OLLAMA_CLOUD_BASE_URL=https://ollama.com
+
+# Ollama Local (fallback)
+OLLAMA_BASE_URL=http://ollama:11434
+
+# Gemini (fallback crítico)
+GEMINI_API_KEY=tu_gemini_key_aqui
+
+# Configuración de modelos (opcional, usa defaults si no se especifica)
+LLM_CHAT_MODEL=minimax-m2:cloud
+LLM_REASONING_MODEL=deepseek-v3.1:671b-cloud
+LLM_VISION_MODEL=qwen3-vl:cloud
+LLM_HALLUCINATION_MODEL=glm-4.6:cloud
+LLM_EMBEDDING_MODEL=nomic-embed-text
+```
+
+**Obtener API Key de Ollama Cloud:**
+1. Visita https://ollama.com
+2. Crea cuenta o inicia sesión
+3. Ve a Settings → API Keys
+4. Genera nueva API key
+5. Cópiala a `.env`
+
+### Métricas y Observabilidad
+
+Todos los clientes y el router loggean usando `structlog`:
+
+- **Intentos de provider**: `llm_router_attempt` con proveedor y modelo
+- **Éxitos**: `llm_router_success` con latencia
+- **Fallos**: `llm_router_provider_failed` con error antes de fallback
+- **OCR**: `dni_ocr_attempt`, `dni_ocr_success` con proveedor usado
+- **Embeddings**: `llm_router_embed_attempt` con count de textos
+
+Esto permite:
+- Monitorear qué proveedor se usa más frecuentemente
+- Detectar degradación de servicio en providers
+- Calcular costos por proveedor
+- Optimizar selección de modelos
+
+### Services Integration
+
+- **WhatsApp**: WAHA HTTP API wrapper in `infrastructure/messaging/waha_service_impl.py`
+- **LLMs**: Multi-provider router con Ollama Cloud (primario), Ollama Local y Gemini
+- **OCR**: Ollama Vision (qwen3-vl) con fallback a Gemini Vision
+- **Document Generation**: ReportLab for legal PDF creation
+- **Async Tasks**: Celery with Redis broker for heavy operations (OCR, PDF generation)
+
+## Important Notes
+
+### PYTHONPATH
+
+All backend commands require PYTHONPATH set to `backend/src`:
+```powershell
+$env:PYTHONPATH = "C:\Users\spereyra\CODE\PROYECTOS\defensoria-civil\divorcios\backend\src"
+```
+
+Docker sets this automatically via environment variable in docker-compose.yml.
+
+### Required Environment Variables
+
+Critical variables in `.env`:
+- `GEMINI_API_KEY`: Google Gemini API key (REQUIRED for LLM and embeddings)
+- `DATABASE_URL`: PostgreSQL connection with pgvector extension
+- `REDIS_URL`: Redis for caching, sessions, rate limiting
+- `WAHA_BASE_URL`, `WAHA_API_KEY`: WhatsApp integration
+- `SECRET_KEY`: JWT signing (change in production)
+- `ALLOWED_JURISDICTIONS`: Legal jurisdiction filter (default: "San Rafael,Mendoza")
+
+### Code Standards
+
+- **Formatting**: Black (line length 100)
+- **Linting**: Ruff with default rules
+- **Imports**: Absolute imports from src root (enabled by PYTHONPATH)
+- **Type Hints**: Encouraged but not enforced (mypy optional)
+- **Logging**: Structured logging via `structlog`
+
+### Testing Strategy
+
+- **Unit tests**: Test individual services/validators with mocked dependencies
+- **Integration tests**: Test full conversation flows with real database (separate test DB)
+- Tests assume PostgreSQL and Redis are available
+
+### Clean Architecture Guidelines
+
+When modifying code:
+
+1. **Never import infrastructure in application layer**: Application defines interfaces, infrastructure implements them
+2. **Use dependency injection**: Pass implementations through constructors
+3. **Keep use cases thin**: Orchestrate services, don't implement business logic
+4. **Validate at boundaries**: Input validation in presentation layer, business validation in application
+5. **Test through interfaces**: Mock at interface boundaries, not concrete implementations
+
+### Database Migrations
+
+No formal migration system. Database schema is in `infrastructure/persistence/models.py`. For schema changes:
+1. Modify SQLAlchemy models
+2. Drop/recreate tables or manually ALTER (no Alembic configured)
+
+### Frontend Architecture
+
+React 18 + TypeScript dashboard with:
+- **Routing**: React Router v6
+- **State**: Zustand for global state
+- **Data fetching**: TanStack Query (React Query)
+- **Forms**: React Hook Form + Zod validation
+- **Styling**: Tailwind CSS + class-variance-authority
+- **Charts**: Recharts
+
+Frontend connects to backend at `http://localhost:8000` (configured in CORS middleware).
+
+## Service URLs
+
+When all services running via Docker:
+
+- API: http://localhost:8000
+- API Docs: http://localhost:8000/docs
+- PostgreSQL: localhost:5432 (user: postgres, db: def_civil)
+- Redis: localhost:6379
+- WAHA (WhatsApp): http://localhost:3000
+- Ollama: http://localhost:11434
+- Frontend (if running): http://localhost:5173

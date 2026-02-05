@@ -1,0 +1,5 @@
+version: "3.9"
+services:
+  waha:
+    environment:
+      - WAHA_WEBHOOK_URL=http://host.docker.internal:8000/webhook/whatsapp

@@ -1,0 +1,45 @@
+{% set oficina_legal = office_address or "E. Civit N° 257, San Rafael" %}
+SEÑORA JUEZA DE FAMILIA:
+{{ letrada_nombre | upper }}, Defensora Oficial a cargo de la {{ defensoría_nombre }}, por la Sra. {{ persona1.apellido | upper }} {{ persona1.nombres | upper }}, conforme escrito ratificatorio que acompaño, a V.S. me presento y respetuosamente digo:
+
+I. DATOS PERSONALES:
+Los datos de mi mandante son: {{ persona1.apellido | upper }} {{ persona1.nombres | upper }}, DNI N.º {{ persona1.dni }}, {{ persona1.nacionalidad or "argentino/a" }}, casada, {{ persona1.edad if persona1.edad else "" }} años de edad, {{ persona1.ocupacion or "" }}, con domicilio real en {{ persona1.domicilio }}, celular {{ persona1.phone or "" }}, correo electrónico {{ persona1.email or "" }}.
+
+II. DOMICILIO LEGAL:
+A todos los efectos del presente proceso constituyo domicilio legal en el Despacho Oficial de la {{ defensoría_nombre }}, sito en {{ oficina_legal }}.
+
+III. BENEFICIO DE LITIGAR SIN GASTOS. SE TENGA PRESENTE:
+De conformidad con lo establecido por el art. 2º de la Resolución de Presidencia N.º 1 de la Suprema Corte de Justicia de la Provincia de fecha 31/01/2018, encontrándose acreditados los extremos previstos por la Resolución General N.º 24/2018 del Ministerio Público de la Defensa y Pupilar de fecha 21/02/2018, para el análisis de la situación económica de las personas asistidas por las Defensorías Civiles; solicito se tenga presente que la Sra. {{ persona1.apellido }} cumple con los requisitos necesarios para acceder al patrocinio oficial resultando entonces innecesaria la presentación judicial del Beneficio de Litigar sin Gastos.
+
+IV. COMPETENCIA:
+De conformidad con lo prescripto por el art. 16 inc. b) de la Ley 9120 y art. 717 del C.C.C.N., V.S. resulta competente para conocer en la presente causa atento el último domicilio conyugal sito en {{ ultimo_domicilio_conyugal }}.
+
+V. OBJETO:
+De conformidad con lo previsto por el art. 437 del C.C.C.N. y art. 173 del C.P.F. y V.F. y siguiendo expresas instrucciones de mi mandante, vengo a solicitar se decrete judicialmente el divorcio de los cónyuges, Sres. {{ persona1.apellido | upper }} {{ persona1.nombres | upper }} y {{ persona2.apellido | upper }} {{ persona2.nombres | upper }}, DNI Nº {{ persona2.dni }}, con domicilio en {{ persona2.domicilio }}, ordenando su inscripción en el Registro del Estado Civil y Capacidad de las Personas.
+
+VI. HECHOS:
+Conforme surge del acta de matrimonio N.º {{ acta.numero }}, Libro Registro N.º {{ acta.libro }}, del Año {{ acta.anio }}, Foja N.º {{ acta.foja }} de la oficina denominada “{{ acta.oficina }}”, la Sra. {{ persona1.apellido }} contrajo matrimonio con el Sr. {{ persona2.apellido }} en fecha {{ fecha_matrimonio }}.
+Por motivos que hicieron moralmente imposible continuar la vida matrimonial, se separaron de hecho sin voluntad de unirse nuevamente en fecha {{ fecha_separacion }}, continuando en esa situación hasta la actualidad.
+
+VII. PROPUESTA REGULADORA DE LOS EFECTOS DEL DIVORCIO:
+INMUEBLES Y BIENES REGISTRABLES: {% if tiene_bienes %}{{ info_bienes }}{% else %}La vivienda que fuera asiento del hogar conyugal es un bien propio de la Sra. {{ persona1.apellido }}, por lo que no hay nada que proponer al respecto. Asimismo, no se adquirieron bienes registrables durante la vigencia del matrimonio.{% endif %}
+BIENES MUEBLES Y ÚTILES DEL HOGAR: {% if bienes_muebles_text %}{{ bienes_muebles_text }}{% else %}Fueron repartidos al momento de la separación, por lo que no es necesaria propuesta en este punto.{% endif %}
+RESPONSABILIDAD PARENTAL: {% if tiene_hijos %}{{ info_hijos }}{% else %}De la unión matrimonial cuya disolución se peticiona, no nacieron hijos.{% endif %}
+
+VIII. PRUEBA:
+A efectos de acreditar los extremos invocados se acompaña:
+A) DOCUMENTAL:
+1) Acta de matrimonio actualizada.
+
+IX. DERECHO:
+Fundo la presente en lo dispuesto por los Arts. 435, 437, 438 y concordantes del Código Civil y Comercial de la Nación y arts. 174 y cc. Ley 9120.
+
+X. PETITORIO:
+Por todo lo expuesto a V.S. SOLICITO:
+1) Me tenga por presentada, por parte en el carácter invocado y por constituido domicilio legal.
+2) Tenga por interpuesto divorcio por petición unilateral y beneficio de litigar sin gastos.
+3) Tenga presente la prueba ofrecida y ordene su agregación.
+4) Oportunamente dicte sentencia de divorcio ordenando su inscripción en el Registro del Estado Civil y Capacidad de las Personas.
+
+PROVEER DE CONFORMIDAD.
+ES JUSTICIA.

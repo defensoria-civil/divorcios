@@ -22,8 +22,19 @@ def init_db():
     with engine.connect() as conn:
         try:
             conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+            conn.commit()
         except Exception:
+            # Si falla (por permisos), continuar; el tipo vector debe existir en la imagen de Postgres pgvector
             pass
     # Import models to register metadata
     from . import models  # noqa: F401
     Base.metadata.create_all(bind=engine)
+
+    # Lightweight idempotent migrations
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("ALTER TABLE cases ADD COLUMN IF NOT EXISTS dni_back_url VARCHAR(255)"))
+            conn.commit()
+    except Exception:
+        # Ignore migration errors in init; assume managed elsewhere
+        pass

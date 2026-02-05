@@ -108,26 +108,43 @@ class MemoryService:
         return result
     
     async def search_episodic_memory(self, case_id: int, query: str, limit: int = 5) -> List[Dict[str, Any]]:
-        """Búsqueda semántica en memoria episódica usando embeddings"""
+        """Búsqueda semántica en memoria episódica usando embeddings.
+
+        En PostgreSQL se usa pgvector; en otros motores (SQLite en tests) se degrada a un ORDER BY simple.
+        """
         # Generar embedding de la query
         embeddings = await self.llm.embed([query])
         if not embeddings or not embeddings[0]:
             return []
-        
+
         query_embedding = embeddings[0]
-        
+
         # Si el embedding viene anidado [[...]], aplanarlo
         if isinstance(query_embedding[0], list):
             query_embedding = query_embedding[0]
-        
+
+        # Si no estamos en PostgreSQL, evitar sintaxis pgvector incompatible (como en SQLite)
+        if self.db.bind and self.db.bind.dialect.name != "postgresql":  # type: ignore[attr-defined]
+            rows = (
+                self.db.query(Memory)
+                .filter(Memory.case_id == case_id, Memory.kind == "episodic")
+                .order_by(Memory.created_at.desc())
+                .limit(limit)
+                .all()
+            )
+            return [
+                {"id": m.id, "content": m.content, "distance": None}
+                for m in rows
+            ]
+
         # Búsqueda vectorial usando pgvector
         # Formato: <-> es el operador de distancia euclidiana
         # Convertir embedding a formato string de PostgreSQL: '[1,2,3]'
         embedding_str = str(query_embedding).replace(' ', '')
-        
+
         result = self.db.execute(
             text("""
-                SELECT id, content, 
+                SELECT id, content,
                        embedding <-> CAST(:query_embedding AS vector) AS distance
                 FROM memories
                 WHERE case_id = :case_id AND kind = 'episodic'
@@ -137,33 +154,51 @@ class MemoryService:
             {
                 "query_embedding": embedding_str,
                 "case_id": case_id,
-                "limit": limit
-            }
+                "limit": limit,
+            },
         ).fetchall()
-        
+
+        # Mapear todas las filas devueltas, no solo una. Evita NameError y
+        # permite retornar múltiples recuerdos ordenados por distancia.
         return [
-            {"id": row[0], "content": row[1], "distance": row[2]}
-            for row in result
+            {"id": r[0], "content": r[1], "distance": r[2]}
+            for r in result
         ]
-    
+
     async def search_semantic_knowledge(self, query: str, limit: int = 3) -> List[Dict[str, Any]]:
-        """Búsqueda en base de conocimiento legal semántico"""
+        """Búsqueda en base de conocimiento legal semántico.
+
+        En PostgreSQL se usa pgvector; en otros motores se degrada a un ORDER BY simple.
+        """
         embeddings = await self.llm.embed([query])
         if not embeddings or not embeddings[0]:
             return []
-        
+
         query_embedding = embeddings[0]
-        
+
         # Si el embedding viene anidado [[...]], aplanarlo
         if isinstance(query_embedding[0], list):
             query_embedding = query_embedding[0]
-        
+
+        # Si no estamos en PostgreSQL, usar un orden simple sin operador vectorial
+        if self.db.bind and self.db.bind.dialect.name != "postgresql":  # type: ignore[attr-defined]
+            rows = (
+                self.db.query(SemanticKnowledge)
+                .order_by(SemanticKnowledge.id.desc())
+                .limit(limit)
+                .all()
+            )
+            return [
+                {"id": r.id, "title": r.title, "content": r.content, "distance": None}
+                for r in rows
+            ]
+
         # Convertir embedding a formato string de PostgreSQL: '[1,2,3]'
         embedding_str = str(query_embedding).replace(' ', '')
-        
+
         result = self.db.execute(
             text("""
-                SELECT id, title, content, 
+                SELECT id, title, content,
                        embedding <-> CAST(:query_embedding AS vector) AS distance
                 FROM semantic_knowledge
                 ORDER BY distance
@@ -171,10 +206,10 @@ class MemoryService:
             """),
             {
                 "query_embedding": embedding_str,
-                "limit": limit
-            }
+                "limit": limit,
+            },
         ).fetchall()
-        
+
         return [
             {"id": row[0], "title": row[1], "content": row[2], "distance": row[3]}
             for row in result

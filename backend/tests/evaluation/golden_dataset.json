@@ -1,0 +1,39 @@
+[
+  {
+    "name": "inicio_conversacion_basica",
+    "phone": "+5492604000001",
+    "steps": [
+      {
+        "input": "Quiero divorciarme",
+        "expected_contains": "tipo de divorcio",
+        "prohibited_substrings": ["asesor\u00eda legal personalizada"]
+      }
+    ]
+  },
+  {
+    "name": "flujo_dni_invalido",
+    "phone": "+5492604000002",
+    "steps": [
+      {
+        "input": "Quiero divorciarme",
+        "expected_contains": "tipo de divorcio",
+        "prohibited_substrings": []
+      },
+      {
+        "input": "unilateral",
+        "expected_contains": "nombre completo",
+        "prohibited_substrings": []
+      },
+      {
+        "input": "Juan P\u00e9rez",
+        "expected_contains": "DNI",
+        "prohibited_substrings": []
+      },
+      {
+        "input": "abc123",
+        "expected_contains": "DNI v\u00e1lido",
+        "prohibited_substrings": []
+      }
+    ]
+  }
+]

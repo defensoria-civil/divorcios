@@ -22,10 +22,19 @@ export interface Message {
   created_at: string;
 }
 
+export interface SupportDocument {
+  id: number;
+  doc_type: 'anses_cert' | 'afip_constancia' | 'recibo_sueldo' | 'jubilacion_comprobante' | 'otro';
+  mime_type?: string | null;
+  created_at: string;
+}
+
 export interface CaseDetail extends Case {
   messages: Message[];
   dni_image_url?: string | null;
+  dni_back_url?: string | null;
   marriage_cert_url?: string | null;
+  support_documents?: SupportDocument[];
   // Perfil económico
   situacion_laboral?: string | null;
   ingreso_mensual_neto?: number | null;

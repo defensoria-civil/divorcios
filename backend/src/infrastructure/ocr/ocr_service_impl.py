@@ -99,20 +99,39 @@ class MultiProviderOCRService(OCRService):
             str(data.get("fecha_matrimonio", ""))
         ):
             errors.append("Fecha de matrimonio no válida")
-            confidence -= 0.3
+            confidence -= 0.4
         
         # Validar nombres de cónyuges
         if not data.get("nombre_conyuge_1") or not data.get("nombre_conyuge_2"):
             errors.append("Nombres de cónyuges incompletos")
-            confidence -= 0.3
+            confidence -= 0.4
         
         # Validar lugar
         if not data.get("lugar_matrimonio"):
             errors.append("Lugar de matrimonio no detectado")
-            confidence -= 0.2
+            confidence -= 0.1
         
         return errors, max(0.0, confidence)
-    
+
+    def _validate_anses_data(self, data: Dict[str, Any]) -> tuple[list[str], float]:
+        """Valida datos de certificación negativa de ANSES."""
+        errors = []
+        confidence = 0.9
+        
+        if not data.get("cuil"):
+            errors.append("CUIL no detectado")
+            confidence -= 0.3
+            
+        if not data.get("periodo"):
+            errors.append("Periodo no detectado")
+            confidence -= 0.2
+            
+        if data.get("es_negativa") is None:
+            errors.append("No se pudo determinar si es negativa")
+            confidence -= 0.2
+            
+        return errors, max(0.0, confidence)
+
     async def extract_dni_data(self, image_bytes: bytes) -> OCRResult:
         """
         Extrae datos estructurados de un DNI argentino.
@@ -231,6 +250,57 @@ Responde SOLO con el JSON, sin explicaciones adicionales."""
                 errors=[f"Error en procesamiento OCR (todos los proveedores): {str(e)}"],
                 raw_text=None
             )
+
+    async def extract_anses_data(self, image_bytes: bytes) -> OCRResult:
+        """
+        Extrae datos de una Certificación Negativa de ANSES.
+        """
+        prompt = """Eres un experto en documentos administrativos argentinos.
+Analiza esta imagen de CERTIFICACIÓN NEGATIVA DE ANSES y extrae los siguientes datos en JSON:
+
+{
+  "cuil": "string (formato XX-XXXXXXXX-X)",
+  "periodo": "string (ej: Noviembre 2025)",
+  "es_negativa": boolean (true si dice "NO REGISTRA" declaraciones juradas/aportes, false si registra algo),
+  "fecha_emision": "DD/MM/AAAA"
+}
+
+Reglas:
+- Busca el texto "NO REGISTRA" para determinar si es negativa.
+- Si dice "REGISTRA", es_negativa = false.
+- Extrae el CUIL del titular.
+
+Responde SOLO con el JSON."""
+
+        try:
+            logger.info("anses_ocr_attempt", provider="ollama_vision")
+            raw_text = await self.vision_client.analyze_image(
+                image_bytes, prompt, model=settings.llm_vision_model
+            )
+            data = self._parse_json_response(raw_text)
+            errors, confidence = self._validate_anses_data(data)
+            success = len(errors) == 0 or confidence > 0.6
+            
+            return OCRResult(success=success, data=data, confidence=confidence, errors=errors, raw_text=raw_text)
+        except Exception as e:
+            logger.warning("anses_ocr_ollama_failed", error=str(e))
+            if self.gemini_fallback_enabled:
+                return await self._extract_anses_gemini_fallback(image_bytes, prompt)
+            return OCRResult(success=False, data={}, confidence=0.0, errors=[str(e)], raw_text=None)
+
+    async def _extract_anses_gemini_fallback(self, image_bytes: bytes, prompt: str) -> OCRResult:
+        try:
+            from PIL import Image
+            from io import BytesIO
+            image = Image.open(BytesIO(image_bytes))
+            response = await self.gemini_model.generate_content_async([prompt, image])
+            raw_text = response.text.strip()
+            data = self._parse_json_response(raw_text)
+            errors, confidence = self._validate_anses_data(data)
+            success = len(errors) == 0 or confidence > 0.6
+            return OCRResult(success=success, data=data, confidence=confidence, errors=errors, raw_text=raw_text)
+        except Exception as e:
+            return OCRResult(success=False, data={}, confidence=0.0, errors=[str(e)], raw_text=None)
     
     async def extract_marriage_certificate_data(self, image_bytes: bytes) -> OCRResult:
         """
@@ -276,7 +346,7 @@ Responde SOLO con el JSON, sin explicaciones adicionales."""
             )
             data = self._parse_json_response(raw_text)
             errors, confidence = self._validate_marriage_data(data)
-            success = len(errors) == 0 or confidence > 0.5
+            success = len(errors) == 0 or confidence > 0.7
             
             logger.info(
                 "marriage_cert_ocr_success",

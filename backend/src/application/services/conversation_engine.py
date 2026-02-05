@@ -1,5 +1,7 @@
 from typing import Optional
 from sqlalchemy.orm import Session
+from opentelemetry import trace
+
 from infrastructure.persistence.db import SessionLocal
 from infrastructure.persistence.repositories import CaseRepository, MessageRepository
 from infrastructure.validation.response_validation_service_impl import SimpleResponseValidationService
@@ -7,6 +9,10 @@ from infrastructure.validation.address_validation_service_impl import SimpleAddr
 from infrastructure.validation.date_validation_service_impl import SimpleDateValidationService
 from infrastructure.services.user_recognition_service_impl import SimpleUserRecognitionService
 from infrastructure.ai.router import LLMRouter
+from infrastructure.ai.safety_layer import SafetyLayer
+
+tracer = trace.get_tracer(__name__)
+
 
 class ConversationEngine:
     def __init__(self, db: Optional[Session] = None):
@@ -18,10 +24,30 @@ class ConversationEngine:
         self.validator_date = SimpleDateValidationService()
         self.user_recog = SimpleUserRecognitionService()
         self.llm = LLMRouter()
+        self.safety = SafetyLayer()
 
     async def handle_incoming(self, phone: str, text: str) -> str:
-        case = self.cases.get_or_create_by_phone(phone)
-        self.messages.add_message(case.id, "user", text)
+        with tracer.start_as_current_span("conversation.handle_incoming") as span:
+            span.set_attribute("conversation.phone", phone)
+
+            safety_result = self.safety.filter_input(text)
+            if not safety_result.allowed:
+                span.set_attribute("conversation.blocked_reason", safety_result.reason or "prompt_injection")
+                reply = (
+                    "No puedo procesar esa solicitud. Por favor reformulá tu mensaje "
+                    "sin instrucciones técnicas hacia el sistema."
+                )
+                # Creamos un caso si no existe, para mantener el historial consistente
+                case = self.cases.get_or_create_by_phone(phone)
+                self.messages.add_message(case.id, "user", text)
+                self.messages.add_message(case.id, "assistant", reply)
+                return reply
+
+            case = self.cases.get_or_create_by_phone(phone)
+            span.set_attribute("conversation.case_id", getattr(case, "id", None))
+            span.set_attribute("conversation.phase", getattr(case, "phase", None))
+
+            self.messages.add_message(case.id, "user", text)
 
         # Simple finite-state flow
         if case.phase == "inicio":
