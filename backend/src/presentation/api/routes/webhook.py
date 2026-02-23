@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, Request, HTTPException
 from presentation.api.schemas.webhook import WhatsAppInbound, WhatsAppMessage
 from sqlalchemy.orm import Session
 import structlog
+import redis
 from application.use_cases.process_incoming_message import (
     ProcessIncomingMessageUseCase,
     IncomingMessageRequest
@@ -9,9 +10,20 @@ from application.use_cases.process_incoming_message import (
 from infrastructure.persistence.db import SessionLocal
 from infrastructure.messaging.waha_service_impl import WAHAWhatsAppService
 from infrastructure.utils.phone_utils import normalize_whatsapp_phone
+from core.config import settings
 
 logger = structlog.get_logger()
 router = APIRouter()
+
+# Cliente Redis para deduplicación de mensajes
+_redis_client = None
+
+def get_redis():
+    """Obtiene cliente Redis singleton para deduplicación"""
+    global _redis_client
+    if _redis_client is None:
+        _redis_client = redis.from_url(settings.redis_url, decode_responses=True)
+    return _redis_client
 
 def get_db():
     db = SessionLocal()
@@ -25,6 +37,37 @@ async def whatsapp_webhook(payload: WhatsAppInbound, request: Request, db: Sessi
     """Endpoint para webhooks de WhatsApp (WAHA)"""
     raw = await request.json()
     logger.info("whatsapp_inbound", payload=payload.model_dump(), raw=raw)
+
+    # Ignorar eventos generados por el propio bot (fromMe == True).
+    # WAHA dispara eventos "message.any" tanto para mensajes entrantes como para
+    # los mensajes enviados vía API. Si no filtramos, procesamos también los
+    # mensajes del bot y terminamos respondiendo dos veces.
+    try:
+        base_msg = None
+        if isinstance(raw, dict):
+            # Priorizar payload/message/data (formatos nuevos de WAHA)
+            for key in ("payload", "message", "data", "msg"):
+                val = raw.get(key)
+                if isinstance(val, dict):
+                    base_msg = val
+                    break
+        if isinstance(base_msg, dict):
+            from_me = base_msg.get("fromMe")
+            # En algunos formatos, el flag puede venir anidado en _data
+            if from_me is None and isinstance(base_msg.get("_data"), dict):
+                from_me = base_msg["_data"].get("fromMe")
+            if bool(from_me):
+                logger.info(
+                    "whatsapp_outbound_event_ignored",
+                    message_id=base_msg.get("id"),
+                )
+                return {
+                    "received": True,
+                    "status": "ignored_outbound",
+                }
+    except Exception:
+        # Si algo falla en la detección, seguimos con el flujo normal.
+        pass
     
     # Manejar formatos alternativos de WAHA (v2025): { message: {...} } o { data: {...} } o { payload: {...} }
     messages = list(payload.messages or [])
@@ -101,6 +144,43 @@ async def whatsapp_webhook(payload: WhatsAppInbound, request: Request, db: Sessi
     # Normalizar el número de teléfono (remover @lid, @c.us, etc.)
     phone = normalize_whatsapp_phone(phone_raw)
     text = msg.body or msg.caption or ""  # Usar caption si es imagen
+    
+    # DEDUPLICACIÓN: Evitar procesar el mismo mensaje dos veces.
+    # WAHA puede enviar múltiples eventos (message.any, message) para el mismo mensaje.
+    # Usamos Redis para trackear mensajes ya procesados por su ID.
+    # Extraer ID del mensaje desde múltiples ubicaciones posibles en el payload.
+    message_id = msg.id
+    if not message_id and isinstance(raw, dict):
+        # Intentar extraer desde payload/message/data/_data
+        for key in ("payload", "message", "data", "msg"):
+            val = raw.get(key)
+            if isinstance(val, dict):
+                message_id = val.get("id")
+                if not message_id and isinstance(val.get("_data"), dict):
+                    message_id = val["_data"].get("id")
+                if message_id:
+                    break
+    if message_id:
+        redis_client = get_redis()
+        dedup_key = f"whatsapp:processed:{message_id}"
+        try:
+            # Intentar marcar como procesado. Si ya existe, significa que ya lo procesamos.
+            was_set = redis_client.set(dedup_key, "1", ex=300, nx=True)  # TTL 5 minutos
+            if not was_set:
+                logger.info(
+                    "whatsapp_message_duplicate_ignored",
+                    message_id=message_id,
+                    phone=phone,
+                    text_preview=text[:50] if text else None
+                )
+                return {
+                    "received": True,
+                    "status": "duplicate_ignored",
+                    "message_id": message_id
+                }
+        except Exception as e:
+            # Si Redis falla, loggear pero continuar (fail-open para no bloquear el flujo)
+            logger.warning("whatsapp_dedup_redis_error", error=str(e), message_id=message_id)
     
     # NUEVO: Detectar si hay media adjunto (imagen)
     media_id = extracted_media_id or None

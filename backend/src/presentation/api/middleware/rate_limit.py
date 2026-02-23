@@ -31,6 +31,13 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         if request.client and request.client.host == "testclient":
             return await call_next(request)
 
+        # Desactivar rate limiting para webhooks de WhatsApp.
+        # WAHA puede enviar múltiples eventos "message.any" por cada mensaje (incluyendo los que
+        # envía el propio bot), lo que genera ráfagas que disparan fácilmente el límite por IP.
+        # En este entorno preferimos no rate‑limitar /webhook para evitar errores 429 hacia WAHA.
+        if request.url.path.startswith("/webhook"):
+            return await call_next(request)
+
         # Extraer identificador (IP o user)
         identifier = self._get_identifier(request)
         

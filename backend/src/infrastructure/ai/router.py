@@ -130,9 +130,12 @@ class LLMRouter(LLMClient):
         """
         embedding_model = model or self.model_map['embeddings']
         
-        # Para embeddings, preferir local por velocidad
-        # Orden: Ollama Local → Ollama Cloud → Gemini
-        embed_fallback_order = ['ollama_local', 'ollama_cloud', 'gemini']
+        # Para embeddings, preferir local por velocidad y evitar depender de cuotas externas.
+        # En este entorno, si Ollama Local no está disponible, degradamos silenciosamente
+        # (sin lanzar excepción) y desactivamos las búsquedas semánticas que lo usan.
+        #
+        # Orden actual: solo Ollama Local. Si falla, devolvemos lista vacía.
+        embed_fallback_order = ['ollama_local']
         
         for provider_name in embed_fallback_order:
             try:
@@ -166,10 +169,13 @@ class LLMRouter(LLMClient):
                     error=str(e)
                 )
                 
+                # Si este era el último proveedor de la lista, no propagamos la excepción.
+                # Devolvemos lista vacía para que los consumidores degraden a modo sin embeddings.
                 if provider_name == embed_fallback_order[-1]:
                     logger.error("llm_router_embed_all_providers_failed")
-                    raise
+                    return []
                 
                 continue
         
-        raise Exception("Todos los proveedores de embeddings fallaron")
+        # Seguridad extra: si por alguna razón se sale del bucle, devolver lista vacía.
+        return []

@@ -84,13 +84,16 @@ class HallucinationDetectionService:
                 flags.append("claims_system_access")
                 confidence -= 0.3
         
-        # 2. Verificar si menciona datos específicos no presentes en contexto
+        # 2. Verificar si menciona datos específicos no presentes en contexto NI en la pregunta original
         for pattern in self.data_patterns:
             matches = pattern.findall(response)
             for match in matches:
-                if match not in context:
-                    flags.append(f"invents_specific_data:{match}")
-                    confidence -= 0.4
+                # Si el dato aparece en el contexto O en la pregunta del usuario,
+                # asumimos que el asistente solo lo está reutilizando y NO lo marcamos como inventado.
+                if match in context or match in question:
+                    continue
+                flags.append(f"invents_specific_data:{match}")
+                confidence -= 0.4
         
         # 3. Verificar URLs o referencias inventadas
         url_pattern = re.compile(r"https?://[^\s]+")

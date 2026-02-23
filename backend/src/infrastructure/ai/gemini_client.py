@@ -9,7 +9,10 @@ class GeminiClient(LLMClient):
             genai.configure(api_key=settings.gemini_api_key)
         # Usar gemini-2.5-flash (modelo disponible actualmente)
         self.model = genai.GenerativeModel("gemini-2.5-flash")
-        self.embed_model = "models/text-embedding-004"
+        # Modelo de embeddings actualizado (text-embedding-004 está deprecado)
+        # Importante: la API espera el nombre completo "models/gemini-embedding-001"
+        # Ver: https://ai.google.dev/api/embeddings
+        self.embed_model = "models/gemini-embedding-001"
 
     async def chat(self, messages: List[Dict[str, str]], tools: Optional[List[Dict[str, Any]]] = None) -> str:
         # Simple adapter; messages -> single prompt with roles

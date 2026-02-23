@@ -2,7 +2,7 @@ version: '3.8'
 
 services:
   waha:
-    image: devlikeapro/waha:latest
+    image: devlikeapro/waha:latest-2026.1.5
     container_name: waha-whatsapp
     restart: unless-stopped
     ports:
@@ -10,29 +10,29 @@ services:
     environment:
       # API Security
       - WHATSAPP_API_KEY=defensoria-civil-2025-api-key
+      - WAHA_NO_API_KEY=True
 
       # Webhook Configuration
-      # Usar host.docker.internal para conectar con backend en host (ruta correcta del backend)
-      - WHATSAPP_HOOK_URL=http://host.docker.internal:8000/webhook/whatsapp
-      - WHATSAPP_HOOK_EVENTS=message
+      # Usar servicio interno 'api' dentro de la red de Docker
+      - WHATSAPP_HOOK_URL=http://api:8000/webhook/whatsapp
+      - WHATSAPP_HOOK_EVENTS=message,message.any,session.status
 
       # Session Configuration
       - WHATSAPP_START_SESSION=default
       # Debug (opcional, comentar en producción)
       # - DEBUG=*
-
+      # Dashboard (desactivar password en entorno local)
+      # - WAHA_DASHBOARD_USERNAME=waha
+      # - WAHA_DASHBOARD_PASSWORD=waha
+      # - WAHA_DASHBOARD_NO_PASSWORD=True
+      - WAHA_DASHBOARD_NO_PASSWORD=True
+      
     volumes:
       # Persistir sesiones de WhatsApp
       - waha_sessions:/app/.sessions
-    networks:
-      - waha-network
     extra_hosts:
       # Permitir que el contenedor acceda al host
       - "host.docker.internal:host-gateway"
-
-networks:
-  waha-network:
-    driver: bridge
 
 volumes:
   waha_sessions:
