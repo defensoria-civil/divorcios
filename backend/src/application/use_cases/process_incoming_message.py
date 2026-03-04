@@ -302,9 +302,9 @@ class ProcessIncomingMessageUseCase:
         # Limpiar el CUIT: quitar guiones y espacios
         cuit_clean = re.sub(r'[\s-]', '', text.strip())
         
-        # Validar formato CUIT: 11 dígitos
-        if not re.match(r'^\d{11}$', cuit_clean):
-            return "El CUIT/CUIL debe tener 11 dígitos.\n\nEjemplo: 20-12345678-9 o 20123456789"
+        # Validar formato CUIT: 10 u 11 dígitos (permitir ingreso sin el último dígito verificador si es común)
+        if not re.match(r'^\d{10,11}$', cuit_clean):
+            return "El CUIT/CUIL ingresado no es válido. Debe tener 11 números (o 10 en algunos casos).\n\nPor favor, ingresalo nuevamente sin puntos ni espacios."
         
         # Extraer DNI del CUIT (dígitos 3 al 10)
         dni = cuit_clean[2:10]
