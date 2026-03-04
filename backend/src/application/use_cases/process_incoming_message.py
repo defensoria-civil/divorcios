@@ -1,5 +1,5 @@
-from typing import Optional
-from dataclasses import dataclass
+from typing import Optional, List, Dict, Any
+from dataclasses import dataclass, field
 from sqlalchemy.orm import Session
 import structlog
 
@@ -28,13 +28,26 @@ class IncomingMessageRequest:
 class MessageResponse:
     """DTO para respuesta del asistente.
 
-    should_send indica si corresponde enviar la respuesta al usuario (por ejemplo,
-    en algunos flujos internos podríamos generar solo logs o actualizaciones de estado).
+    should_send indica si corresponde enviar la respuesta al usuario.
+    
+    Campos interactivos (opcionales):
+    - buttons: Lista de botones de respuesta rápida [{"text": "Opción"}]. Máx 3.
+    - list_data: Datos para mensaje tipo lista {"description", "button_text", "sections", "title", "footer"}.
+    - header / footer: Texto de encabezado / pie para mensajes con botones.
+    
+    Si buttons o list_data están presentes, el webhook usará send_buttons / send_list
+    en lugar de send_message. El campo 'text' sirve como body del mensaje interactivo
+    y también como texto de fallback si la función interactiva falla.
     """
     text: str
     should_send: bool = True
     send_document: bool = False
     document_path: Optional[str] = None
+    # --- Campos interactivos ---
+    buttons: Optional[List[Dict[str, str]]] = None
+    list_data: Optional[Dict[str, Any]] = None
+    header: Optional[str] = None
+    footer: Optional[str] = None
 
 class ProcessIncomingMessageUseCase:
     """
@@ -55,6 +68,8 @@ class ProcessIncomingMessageUseCase:
         self.ocr = MultiProviderOCRService()
         self.whatsapp = WAHAWhatsAppService()
         self.safety = SafetyLayer()
+        # Estado temporal para datos interactivos (se resetea en cada execute)
+        self._pending_interactive: Dict[str, Any] = {}
     
     async def execute(self, request: IncomingMessageRequest) -> MessageResponse:
         """Ejecuta el caso de uso"""
@@ -76,31 +91,45 @@ class ProcessIncomingMessageUseCase:
         self.messages.add_message(case.id, "user", text)
         await self.memory.store_immediate_memory(case.id, f"Usuario: {text}")
         
-        # 4. Procesar según fase del caso (máquina de estados)
+        # 4. Resetear estado interactivo pendiente
+        self._pending_interactive = {}
+        self._is_template_response = True  # Por defecto, las fases usan templates deterministas
+        
+        # 5. Procesar según fase del caso (máquina de estados)
         reply = await self._handle_phase(case, text)
         
-        # 5. Validar respuesta contra alucinaciones
-        context = await self.memory.build_context_for_llm(case.id, text)
-        hallucination_check = await self.hallucination.check_response(reply, context, text)
+        # 6. Validar respuesta contra alucinaciones
+        #    Solo para respuestas generadas por LLM (no para plantillas deterministas ni interactivas)
+        is_interactive = bool(self._pending_interactive)
+        if not is_interactive and not self._is_template_response:
+            context = await self.memory.build_context_for_llm(case.id, text)
+            hallucination_check = await self.hallucination.check_response(reply, context, text)
+            
+            if not hallucination_check.is_valid:
+                logger.warning(
+                    "hallucination_detected",
+                    case_id=case.id,
+                    confidence=hallucination_check.confidence,
+                    flags=hallucination_check.flags
+                )
+                reply = "Disculpá, tuve un problema. ¿Podés reformular tu consulta?"
+                self._pending_interactive = {}  # Limpiar interactive si hubo error
         
-        if not hallucination_check.is_valid:
-            logger.warning(
-                "hallucination_detected",
-                case_id=case.id,
-                confidence=hallucination_check.confidence,
-                flags=hallucination_check.flags
-            )
-            # Fallback a respuesta segura
-            reply = "Disculpá, tuve un problema. ¿Podés reformular tu consulta?"
-        
-        # 6. Almacenar respuesta del asistente
+        # 7. Almacenar respuesta del asistente
         self.messages.add_message(case.id, "assistant", reply)
         await self.memory.store_immediate_memory(case.id, f"Asistente: {reply}")
         
-        # 7. Guardar datos en memoria de sesión
+        # 8. Guardar datos en memoria de sesión
         await self._update_session_memory(case)
         
-        return MessageResponse(text=reply)
+        # 9. Construir respuesta con datos interactivos si existen
+        return MessageResponse(
+            text=reply,
+            buttons=self._pending_interactive.get("buttons"),
+            list_data=self._pending_interactive.get("list_data"),
+            header=self._pending_interactive.get("header"),
+            footer=self._pending_interactive.get("footer"),
+        )
     
     async def _handle_phase(self, case, text: str) -> str:
         """Maneja el flujo según la fase actual del caso"""
@@ -189,6 +218,9 @@ class ProcessIncomingMessageUseCase:
         elif case.phase == "bienes":
             return await self._phase_bienes(case, text)
         
+        elif case.phase == "bienes_detalle":
+            return await self._phase_bienes_detalle(case, text)
+        
         elif case.phase == "documentacion":
             return await self._phase_documentacion(case, text)
         
@@ -200,11 +232,19 @@ class ProcessIncomingMessageUseCase:
         """Fase inicial: saludo y presentación"""
         case.phase = "tipo_divorcio"
         self.cases.update(case)
-        return (
-            "¡Hola! Soy tu asistente de la Defensoría Civil de San Rafael.\n"
+        body = (
+            "¡Hola! 👋 Soy tu asistente de la *Defensoría Civil de San Rafael*.\n\n"
             "Te voy a guiar paso a paso para iniciar tu trámite de divorcio.\n\n"
-            "¿Qué tipo de divorcio querés iniciar: unilateral (solo vos) o conjunta (los dos)?"
+            "¿Cómo desean presentarlo?"
         )
+        self._pending_interactive = {
+            "buttons": [
+                {"text": "Solo yo (Unilateral)"},
+                {"text": "Los dos (Conjunta)"},
+            ],
+            "footer": "Defensoría Civil - San Rafael",
+        }
+        return body
     
     async def _phase_tipo_divorcio(self, case, text: str) -> str:
         """Fase: selección de tipo de divorcio"""
@@ -220,7 +260,14 @@ class ProcessIncomingMessageUseCase:
             self.cases.update(case)
             return "Perfecto, divorcio conjunta. Ahora necesito algunos datos personales.\n\n¿Cuál es tu apellido?"
         else:
-            return "Por favor respondé 'unilateral' si querés iniciar solo vos, o 'conjunta' si van a iniciar juntos."
+            body = "Por favor, seleccioná cómo desean presentar el divorcio:"
+            self._pending_interactive = {
+                "buttons": [
+                    {"text": "Solo yo (Unilateral)"},
+                    {"text": "Los dos (Conjunta)"},
+                ],
+            }
+            return body
     
     async def _phase_apellido(self, case, text: str) -> str:
         """Fase: recolección de apellido"""
@@ -313,11 +360,31 @@ class ProcessIncomingMessageUseCase:
         summary = f"Usuario {case.nombre} completó datos personales para divorcio {case.type}. DNI: {case.dni}"
         await self.memory.store_episodic_memory(case.id, summary)
         
-        return (
-            "Antes de seguir, vamos a registrar algunos datos económicos para evaluar el Beneficio de Litigar sin Gastos (BLSG). "
-            "Es una declaración jurada y luego un operador la va a revisar con tu documentación.\n\n"
-            "¿Cuál es tu situación laboral? Opciones: desocupado/a, relación de dependencia, autónomo/monotributo, informal/changas, jubilación/pensión/beneficio u otro."
+        body = (
+            "Antes de seguir, vamos a registrar algunos datos económicos para evaluar el "
+            "*Beneficio de Litigar sin Gastos (BLSG)*. "
+            "Es una declaración jurada y luego un operador la va a revisar con tu documentación."
         )
+        self._pending_interactive = {
+            "list_data": {
+                "description": body,
+                "button_text": "Ver opciones",
+                "title": "Situación Laboral",
+                "footer": "Seleccioná la opción que corresponda",
+                "sections": [{
+                    "title": "Opciones",
+                    "rows": [
+                        {"title": "Desocupado/a", "rowId": "desocupado", "description": "Sin empleo actual"},
+                        {"title": "Relación de dependencia", "rowId": "dependencia", "description": "Empleado/a en blanco"},
+                        {"title": "Autónomo / Monotributo", "rowId": "autonomo", "description": "Trabajo independiente"},
+                        {"title": "Informal / Changas", "rowId": "informal", "description": "Sin registración formal"},
+                        {"title": "Jubilación / Pensión", "rowId": "jubilado", "description": "Jubilado/a o pensionado/a"},
+                        {"title": "Otro", "rowId": "otro", "description": "Otra situación"},
+                    ],
+                }],
+            }
+        }
+        return body
     
     async def _phase_apellido_conyuge(self, case, text: str) -> str:
         """Fase: recolección de apellido del cónyuge"""
@@ -483,12 +550,16 @@ class ProcessIncomingMessageUseCase:
             warn = ("\n\n⚠️ El último domicilio conyugal no parece estar en San Rafael. "
                     "Podría corresponder otro juzgado competente. Un operador lo revisará.")
         
-        return (
+        body = (
             "Gracias. Registré el último domicilio conyugal." + warn + "\n\n" +
             "Ahora vamos a registrar a los hijos que corresponda incluir en el convenio.\n\n"
             "Solo se incluyen: (a) menores de 18; (b) de 18 a 25 que estudian y no son económicamente independientes; o (c) de cualquier edad con CUD.\n\n"
-            "¿Tienen hijos en común con estas características? Si no, respondé 'no'."
+            "¿Tienen hijos en común con estas características?"
         )
+        self._pending_interactive = {
+            "buttons": [{"text": "Sí"}, {"text": "No"}],
+        }
+        return body
 
     async def _phase_hijos(self, case, text: str) -> str:
         """Fase: información sobre hijos (introducción y decisión)"""
@@ -498,18 +569,22 @@ class ProcessIncomingMessageUseCase:
             case.tiene_hijos = False
             case.phase = "bienes"
             self.cases.update(case)
-            return (
+            body = (
                 "Entendido. No van a incluir hijos en el convenio.\n\n"
-                "¿Tienen bienes en común? (casa, auto, cuentas bancarias, etc.)\n\n"
-                "Si no tienen, respondé 'no'."
+                "¿Tienen bienes en común? (casa, auto, cuentas bancarias, etc.)"
             )
+            self._pending_interactive = {
+                "buttons": [{"text": "Sí"}, {"text": "No"}],
+                "footer": "Si tienen bienes, luego te pediré que los detallés.",
+            }
+            return body
         
         # Si responden afirmativamente, pedir cantidad bajo el criterio
         case.tiene_hijos = True
         self.cases.update(case)
         case.phase = "hijos_cuantos"
         return (
-            "Perfecto. Solo incluiremos hijos con las características indicadas.\n"
+            "Perfecto. Solo incluiremos hijos con las características indicadas.\n\n"
             "¿Cuántos hijos en común con esas características desean declarar?"
         )
     
@@ -524,11 +599,15 @@ class ProcessIncomingMessageUseCase:
             case.tiene_hijos = False
             case.phase = "bienes"
             self.cases.update(case)
-            return (
+            body = (
                 "Entendido. No van a incluir hijos en el convenio.\n\n"
-                "¿Tienen bienes en común? (casa, auto, cuentas bancarias, etc.)\n\n"
-                "Si no tienen, respondé 'no'."
+                "¿Tienen bienes en común? (casa, auto, cuentas bancarias, etc.)"
             )
+            self._pending_interactive = {
+                "buttons": [{"text": "Sí"}, {"text": "No"}],
+                "footer": "Si tienen bienes, luego te pediré que los detallés.",
+            }
+            return body
         # Guardar en memoria de sesión
         await self.memory.store_session_memory(case.id, "hijos_total", total)
         await self.memory.store_session_memory(case.id, "hijos_index", 0)
@@ -574,12 +653,17 @@ class ProcessIncomingMessageUseCase:
             await self.memory.store_session_memory(case.id, "hijo_actual_edad", age)
             case.phase = "hijo_mayor_eval"
             self.cases.update(case)
-            return (
-                f"{nombre_hijo} tiene {age} años. Para incluirlo, indicá si:\n"
-                "- Tiene CUD vigente (respondé 'CUD'), o\n"
-                "- Tiene entre 18 y 25, estudia y no es económicamente independiente (respondé 'ESTUDIA'), o\n"
-                "- Ninguna de las anteriores (respondé 'NO')."
-            )
+            body = f"{nombre_hijo} tiene {age} años. ¿En cuál situación se encuentra?"
+            self._pending_interactive = {
+                "buttons": [
+                    {"text": "Tiene CUD vigente"},
+                    {"text": "Estudia (18-25)"},
+                    {"text": "Ninguna aplica"},
+                ],
+                "header": f"Evaluación de {nombre_hijo}",
+                "footer": "Criterios de inclusión en el convenio",
+            }
+            return body
         # Registrar y avanzar
         linea = f"{nombre_hijo} - Fecha nac.: {dob.strftime('%d/%m/%Y')} - Motivo: {motivo}"
         case.info_hijos = (case.info_hijos + "\n" if case.info_hijos else "") + linea
@@ -590,11 +674,15 @@ class ProcessIncomingMessageUseCase:
         if index >= total:
             case.phase = "bienes"
             self.cases.update(case)
-            return (
-                "Datos de hijos registrados.\n\n"
-                "¿Tienen bienes en común? (casa, auto, cuentas bancarias, deudas, etc.)\n\n"
-                "Si no tienen, respondé 'no'."
+            body = (
+                "✅ Datos de hijos registrados.\n\n"
+                "¿Tienen bienes en común? (casa, auto, cuentas bancarias, deudas, etc.)"
             )
+            self._pending_interactive = {
+                "buttons": [{"text": "Sí"}, {"text": "No"}],
+                "footer": "Si tienen bienes, luego te pediré que los detallés.",
+            }
+            return body
         else:
             case.phase = "hijo_nombre"
             self.cases.update(case)
@@ -607,10 +695,10 @@ class ProcessIncomingMessageUseCase:
         age = int(data.get("hijo_actual_edad", 18) or 18)
         total = int(data.get("hijos_total", 1) or 1)
         index = int(data.get("hijos_index", 0) or 0)
-        if low in ["cud", "tiene cud", "discapacidad", "si cud"]:
+        if low in ["cud", "tiene cud", "discapacidad", "si cud", "tiene cud vigente"]:
             motivo = "DISCAPACIDAD_CUD"
             incluido = True
-        elif low in ["estudia", "18-25", "estudia_dep", "dep", "estudia y no es independiente"]:
+        elif low in ["estudia", "18-25", "estudia_dep", "dep", "estudia y no es independiente", "estudia (18-25)"]:
             motivo = "ESTUDIA_18A25_DEP" if 18 <= age <= 25 else "NO_CRITERIO"
             incluido = 18 <= age <= 25
         else:
@@ -625,11 +713,15 @@ class ProcessIncomingMessageUseCase:
         if index >= total:
             case.phase = "bienes"
             self.cases.update(case)
-            return (
-                "Datos de hijos registrados.\n\n"
-                "¿Tienen bienes en común? (casa, auto, cuentas bancarias, deudas, etc.)\n\n"
-                "Si no tienen, respondé 'no'."
+            body = (
+                "✅ Datos de hijos registrados.\n\n"
+                "¿Tienen bienes en común? (casa, auto, cuentas bancarias, deudas, etc.)"
             )
+            self._pending_interactive = {
+                "buttons": [{"text": "Sí"}, {"text": "No"}],
+                "footer": "Si tienen bienes, luego te pediré que los detallés.",
+            }
+            return body
         else:
             case.phase = "hijo_nombre"
             self.cases.update(case)
@@ -664,7 +756,17 @@ class ProcessIncomingMessageUseCase:
                 "¿Tenés alguna consulta mientras tanto?"
             )
         
-        # Si tienen bienes, guardar la info
+        # Si responden "sí" desde un botón, preguntar detalle de bienes
+        if low in ['si', 'sí']:
+            case.tiene_bienes = True
+            case.phase = "bienes_detalle"
+            self.cases.update(case)
+            return (
+                "Perfecto. Por favor describí los bienes en común que tienen:\n\n"
+                "Ejemplo: _casa en San Rafael, auto Fiat Palio 2015, cuenta bancaria BNA_"
+            )
+        
+        # Si tienen bienes, guardar la info (texto libre)
         case.tiene_bienes = True
         case.info_bienes = text.strip()
         case.phase = "documentacion"
@@ -688,6 +790,36 @@ class ProcessIncomingMessageUseCase:
             "1. En las próximas 24-48hs un operador va a revisar tu caso\n"
             "2. Te contactaremos para coordinar documentación y partición de bienes\n"
             "3. Redactaremos la propuesta de convenio y la demanda\n\n"
+            "¿Tenés alguna consulta?"
+        )
+    
+    async def _phase_bienes_detalle(self, case, text: str) -> str:
+        """Fase: detalle de bienes (llega desde _phase_bienes cuando usuario respondió 'Sí')"""
+        if text.strip().lower() in ['no', 'nada', 'ninguno']:
+            case.tiene_bienes = False
+            case.info_bienes = None
+        else:
+            case.info_bienes = text.strip()
+        case.phase = "documentacion"
+        case.status = "info_completa"
+        self.cases.update(case)
+        
+        summary = f"Usuario {case.nombre} completó toda la información. Cónyuge: {case.nombre_conyuge}. Hijos: {'Sí' if case.tiene_hijos else 'No'}. Bienes: {'Sí' if case.tiene_bienes else 'No'}"
+        await self.memory.store_episodic_memory(case.id, summary)
+        
+        bienes_text = f"Sí - {case.info_bienes}" if case.tiene_bienes else "No"
+        return (
+            f"✅ ¡Excelente! Toda la información está completa.\n\n"
+            "📋 **Resumen:**\n"
+            f"- Tipo: Divorcio {case.type}\n"
+            f"- Solicitante: {case.nombre}\n"
+            f"- Cónyuge: {case.nombre_conyuge}\n"
+            f"- Hijos en común: {'Sí' if case.tiene_hijos else 'No'}\n"
+            f"- Bienes en común: {bienes_text}\n\n"
+            "📝 **Próximos pasos:**\n"
+            "1. En las próximas 24-48hs un operador va a revisar tu caso\n"
+            "2. Te contactaremos para coordinar documentación\n"
+            "3. Redactaremos la demanda de divorcio\n\n"
             "¿Tenés alguna consulta?"
         )
     
@@ -733,6 +865,7 @@ class ProcessIncomingMessageUseCase:
     
     async def _llm_fallback(self, case, text: str) -> str:
         """Fallback: usar LLM con contexto completo"""
+        self._is_template_response = False  # Respuesta generada por LLM, requiere hallucination check
         context = await self.memory.build_context_for_llm(case.id, text)
         
         system_prompt = f"""Sos un asistente legal de la Defensoría Civil de San Rafael, Mendoza, Argentina.
@@ -808,7 +941,15 @@ Respuesta:"""
         # Si desocupado u otro, pasar a vivienda
         case.phase = "econ_vivienda"
         self.cases.update(case)
-        return "¿Tu vivienda es propia, alquilada o cedida/prestada?"
+        body = "¿Tu vivienda es propia, alquilada o cedida/prestada?"
+        self._pending_interactive = {
+            "buttons": [
+                {"text": "Propia"},
+                {"text": "Alquilada"},
+                {"text": "Cedida / Prestada"},
+            ],
+        }
+        return body
 
     async def _phase_econ_ingreso(self, case, text: str) -> str:
         import re
@@ -820,19 +961,39 @@ Respuesta:"""
         case.ingreso_mensual_neto = int(m.group())
         self.cases.update(case)
         case.phase = "econ_vivienda"
-        return "¿Tu vivienda es propia, alquilada o cedida/prestada?"
+        body = "¿Tu vivienda es propia, alquilada o cedida/prestada?"
+        self._pending_interactive = {
+            "buttons": [
+                {"text": "Propia"},
+                {"text": "Alquilada"},
+                {"text": "Cedida / Prestada"},
+            ],
+        }
+        return body
 
     async def _phase_econ_vivienda(self, case, text: str) -> str:
         low = text.lower()
-        if "alquil" in low:
+        # Aceptar "propia", "alquilada", "cedida" tanto como texto libre como desde botón
+        if any(k in low for k in ["alquil", "2"]):
             case.vivienda_tipo = "alquilada"
             case.phase = "econ_alquiler"
             self.cases.update(case)
             return "¿Cuánto pagás por mes de alquiler? (monto en pesos)"
-        elif "prop" in low:
+        elif any(k in low for k in ["prop", "1"]):
             case.vivienda_tipo = "propia"
-        else:
+        elif any(k in low for k in ["cedida", "prestad", "3"]):
             case.vivienda_tipo = "cedida"
+        else:
+            # Si no se reconoce, presentar botones
+            body = "No entendí tu respuesta. ¿Tu vivienda es propia, alquilada o cedida/prestada?"
+            self._pending_interactive = {
+                "buttons": [
+                    {"text": "Propia"},
+                    {"text": "Alquilada"},
+                    {"text": "Cedida / Prestada"},
+                ],
+            }
+            return body
         self.cases.update(case)
         case.phase = "econ_patrimonio_inmuebles"
         return "¿Tenés inmuebles a tu nombre? Si sí, indicá ciudad/provincia (ej: 'casa en San Rafael, Mendoza'). Podés responder 'no'."
