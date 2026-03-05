@@ -43,7 +43,14 @@ services:
   redis:
     image: redis:7-alpine
     ports:
-      - "6380:6379"
+      - "7379:6379"
+
+  dashboard:
+    build: ./frontend
+    ports:
+      - "5173:80"
+    depends_on:
+      - api
 
 volumes:
   waha_sessions:
