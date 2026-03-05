@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { FileText, X, ZoomIn, ZoomOut, Download, Image as ImageIcon } from 'lucide-react';
+import { FileText, X, ZoomIn, ZoomOut, Download } from 'lucide-react';
 import { Card } from '@/shared/components/ui/Card';
 import { Button } from '@/shared/components/ui/Button';
 import { casesApi } from '../api/cases.api';
@@ -19,7 +19,7 @@ interface ImageModalProps {
   onClose: () => void;
 }
 
-function ImageModal({ imageUrl, title, onClose }: ImageModalProps) {
+export function ImageModal({ imageUrl, title, onClose }: ImageModalProps) {
   const [zoom, setZoom] = useState(100);
 
   const handleDownload = async () => {
@@ -71,7 +71,7 @@ function ImageModal({ imageUrl, title, onClose }: ImageModalProps) {
                 <ZoomIn className="w-4 h-4" />
               </Button>
             </div>
-            
+
             {/* Download Button */}
             <Button
               variant="outline"
@@ -81,7 +81,7 @@ function ImageModal({ imageUrl, title, onClose }: ImageModalProps) {
               <Download className="w-4 h-4 mr-2" />
               Descargar
             </Button>
-            
+
             {/* Close Button */}
             <button
               onClick={onClose}
@@ -166,7 +166,7 @@ export function DocumentsViewer({ caseId, dniImageUrl, dniBackUrl, marriageCertU
     recibo_sueldo: 'Recibo de sueldo',
     jubilacion_comprobante: 'Comprobante jubilación/pensión',
     otro: 'Documento',
-  } as Record<string,string>)[t] || t;
+  } as Record<string, string>)[t] || t;
 
   const openSupport = async (docId: number) => {
     try {
@@ -211,7 +211,7 @@ export function DocumentsViewer({ caseId, dniImageUrl, dniBackUrl, marriageCertU
             </p>
             <div className="mt-3 flex gap-2">
               <Button variant="outline" onClick={() => openDoc('dni')}>Abrir</Button>
-              <Button variant="outline" onClick={() => downloadDoc('dni')}><Download className="w-4 h-4 mr-1"/>Descargar</Button>
+              <Button variant="outline" onClick={() => downloadDoc('dni')}><Download className="w-4 h-4 mr-1" />Descargar</Button>
             </div>
           </div>
         )}
@@ -223,7 +223,7 @@ export function DocumentsViewer({ caseId, dniImageUrl, dniBackUrl, marriageCertU
             </p>
             <div className="mt-3 flex gap-2">
               <Button variant="outline" onClick={() => openDoc('dni_back')}>Abrir</Button>
-              <Button variant="outline" onClick={() => downloadDoc('dni_back')}><Download className="w-4 h-4 mr-1"/>Descargar</Button>
+              <Button variant="outline" onClick={() => downloadDoc('dni_back')}><Download className="w-4 h-4 mr-1" />Descargar</Button>
             </div>
           </div>
         )}
@@ -235,7 +235,7 @@ export function DocumentsViewer({ caseId, dniImageUrl, dniBackUrl, marriageCertU
             </p>
             <div className="mt-3 flex gap-2">
               <Button variant="outline" onClick={() => openDoc('marriage_cert')}>Abrir</Button>
-              <Button variant="outline" onClick={() => downloadDoc('marriage_cert')}><Download className="w-4 h-4 mr-1"/>Descargar</Button>
+              <Button variant="outline" onClick={() => downloadDoc('marriage_cert')}><Download className="w-4 h-4 mr-1" />Descargar</Button>
             </div>
           </div>
         )}
@@ -253,7 +253,7 @@ export function DocumentsViewer({ caseId, dniImageUrl, dniBackUrl, marriageCertU
                 </p>
                 <div className="mt-3 flex gap-2">
                   <Button variant="outline" onClick={() => openSupport(doc.id)}>Abrir</Button>
-                  <Button variant="outline" onClick={() => downloadSupport(doc.id, labelFor(doc.doc_type))}><Download className="w-4 h-4 mr-1"/>Descargar</Button>
+                  <Button variant="outline" onClick={() => downloadSupport(doc.id, labelFor(doc.doc_type))}><Download className="w-4 h-4 mr-1" />Descargar</Button>
                 </div>
               </div>
             ))}

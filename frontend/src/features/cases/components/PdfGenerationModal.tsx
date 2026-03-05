@@ -37,7 +37,7 @@ export function PdfGenerationModal({ caseId, onClose }: PdfGenerationModalProps)
 
   useEffect(() => {
     validateCaseData();
-    
+
     // Cleanup: liberar URL del blob al desmontar
     return () => {
       if (pdfUrl) {
@@ -49,12 +49,12 @@ export function PdfGenerationModal({ caseId, onClose }: PdfGenerationModalProps)
   const validateCaseData = async () => {
     setStep('validating');
     setProgress(10);
-    
+
     try {
       const data = await casesApi.validateCase(caseId);
       setValidation(data);
       setProgress(100);
-      
+
       // Si está completo, pasar directamente a generación
       if (data.is_valid) {
         setTimeout(() => generatePDF(), 500);
@@ -78,7 +78,7 @@ export function PdfGenerationModal({ caseId, onClose }: PdfGenerationModalProps)
   const generatePDF = async (preview: boolean = true) => {
     setStep('generating');
     setProgress(0);
-    
+
     // Simular progreso
     const progressInterval = setInterval(() => {
       setProgress(prev => {
@@ -86,14 +86,14 @@ export function PdfGenerationModal({ caseId, onClose }: PdfGenerationModalProps)
         return prev + 10;
       });
     }, 200);
-    
+
     try {
       const blob = await casesApi.downloadPetition(caseId);
       clearInterval(progressInterval);
       setProgress(100);
-      
+
       const url = window.URL.createObjectURL(blob);
-      
+
       if (preview) {
         // Mostrar previsualización
         setPdfUrl(url);
@@ -108,7 +108,7 @@ export function PdfGenerationModal({ caseId, onClose }: PdfGenerationModalProps)
         a.click();
         window.URL.revokeObjectURL(url);
         document.body.removeChild(a);
-        
+
         setStep('complete');
         toast.success('PDF descargado exitosamente');
       }
@@ -119,41 +119,41 @@ export function PdfGenerationModal({ caseId, onClose }: PdfGenerationModalProps)
       onClose();
     }
   };
-  
+
   const handleDownloadFromPreview = () => {
     if (!pdfUrl) return;
-    
+
     const a = document.createElement('a');
     a.href = pdfUrl;
     a.download = `demanda-divorcio-caso-${caseId}.pdf`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
-    
+
     setStep('complete');
     toast.success('PDF descargado exitosamente');
   };
 
   const handleSaveAndGenerate = async () => {
     if (!validation) return;
-    
+
     // Validar que todos los campos faltantes estén completados
     const allFieldsFilled = validation.missing_fields.every(
       field => missingData[field.field] && missingData[field.field].trim() !== ''
     );
-    
+
     if (!allFieldsFilled) {
       toast.error('Por favor, completa todos los campos requeridos');
       return;
     }
-    
+
     const toastId = toast.loading('Guardando datos...');
-    
+
     try {
       // Actualizar caso con los datos faltantes
       await casesApi.updateCase(caseId, missingData);
       toast.success('Datos actualizados', { id: toastId });
-      
+
       // Generar PDF
       await generatePDF();
     } catch (error) {
@@ -291,7 +291,7 @@ export function PdfGenerationModal({ caseId, onClose }: PdfGenerationModalProps)
                           {field.label}
                         </p>
                         <p className="text-sm text-gray-900 dark:text-gray-100">
-                          {typeof field.value === 'boolean' 
+                          {typeof field.value === 'boolean'
                             ? (field.value ? 'Sí' : 'No')
                             : (field.value || '-')
                           }
@@ -308,10 +308,10 @@ export function PdfGenerationModal({ caseId, onClose }: PdfGenerationModalProps)
                   Cancelar
                 </Button>
                 <Button
-                  onClick={validation.is_valid ? generatePDF : handleSaveAndGenerate}
+                  onClick={validation.is_valid ? () => generatePDF() : handleSaveAndGenerate}
                   className="flex-1"
                 >
-                  {validation.missing_fields.length > 0 
+                  {validation.missing_fields.length > 0
                     ? 'Guardar y Generar PDF'
                     : 'Generar PDF'
                   }
@@ -354,7 +354,7 @@ export function PdfGenerationModal({ caseId, onClose }: PdfGenerationModalProps)
                   <FileText className="w-5 h-5" />
                   Previsualización del Documento
                 </h3>
-                
+
                 {/* PDF Viewer */}
                 <div className="bg-white dark:bg-gray-900 rounded-lg overflow-hidden" style={{ height: '500px' }}>
                   <iframe
@@ -363,21 +363,21 @@ export function PdfGenerationModal({ caseId, onClose }: PdfGenerationModalProps)
                     title="PDF Preview"
                   />
                 </div>
-                
+
                 <p className="text-sm text-gray-600 dark:text-gray-400 mt-3 text-center">
                   Revisá el documento antes de descargarlo. Podés hacer zoom y navegar las páginas.
                 </p>
               </div>
-              
+
               {/* Actions */}
               <div className="flex gap-3">
-                <Button 
-                  variant="outline" 
+                <Button
+                  variant="outline"
                   onClick={() => {
                     window.URL.revokeObjectURL(pdfUrl);
                     setPdfUrl(null);
                     setStep('incomplete');
-                  }} 
+                  }}
                   className="flex-1"
                 >
                   Volver a Editar

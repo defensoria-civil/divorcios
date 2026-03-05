@@ -64,14 +64,16 @@ export function EconomicProfileCard({ caseId, data }: Props) {
         ) : (
           <div className="flex gap-2">
             <Button size="sm" onClick={save}>Guardar</Button>
-            <Button variant="outline" size="sm" onClick={() => { setEditing(false); setForm({
-              situacion_laboral: data.situacion_laboral || '',
-              ingreso_mensual_neto: data.ingreso_mensual_neto || undefined,
-              vivienda_tipo: data.vivienda_tipo || '',
-              alquiler_mensual: data.alquiler_mensual || undefined,
-              patrimonio_inmuebles: data.patrimonio_inmuebles || '',
-              patrimonio_registrables: data.patrimonio_registrables || '',
-            }); }}>Cancelar</Button>
+            <Button variant="outline" size="sm" onClick={() => {
+              setEditing(false); setForm({
+                situacion_laboral: data.situacion_laboral || '',
+                ingreso_mensual_neto: data.ingreso_mensual_neto || undefined,
+                vivienda_tipo: data.vivienda_tipo || '',
+                alquiler_mensual: data.alquiler_mensual || undefined,
+                patrimonio_inmuebles: data.patrimonio_inmuebles || '',
+                patrimonio_registrables: data.patrimonio_registrables || '',
+              });
+            }}>Cancelar</Button>
           </div>
         )}
       </div>
@@ -99,7 +101,7 @@ export function EconomicProfileCard({ caseId, data }: Props) {
               disabled={disabled}
               className="w-full px-3 py-2 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900"
               value={form.ingreso_mensual_neto ?? ''}
-              onChange={e => setForm(f => ({ ...f, ingreso_mensual_neto: e.target.value }))}
+              onChange={e => setForm(f => ({ ...f, ingreso_mensual_neto: e.target.value as any }))}
               placeholder="250000"
             />
           </div>
@@ -119,7 +121,7 @@ export function EconomicProfileCard({ caseId, data }: Props) {
               disabled={disabled || form.vivienda_tipo?.toLowerCase() !== 'alquilada'}
               className="w-full px-3 py-2 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900"
               value={form.alquiler_mensual ?? ''}
-              onChange={e => setForm(f => ({ ...f, alquiler_mensual: e.target.value }))}
+              onChange={e => setForm(f => ({ ...f, alquiler_mensual: e.target.value as any }))}
               placeholder="120000"
             />
           </div>
